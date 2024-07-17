@@ -51,9 +51,6 @@ class EthAdvanced(Eth):
     ]
 
     FILTER_RANGES_TO_TRY = sorted([
-        100_000,
-        50_000,
-        20_000,
         10_000,
         5_000,
         2_000,
@@ -73,7 +70,8 @@ class EthAdvanced(Eth):
     def __init__(self, w3):
         super().__init__(w3=w3)
 
-        self._wrap_methods_with_retry()
+        if self.w3.should_retry:
+            self._wrap_methods_with_retry()
 
         self.filter_block_range = self._find_max_filter_range()
 
@@ -120,7 +118,9 @@ class EthAdvanced(Eth):
         try:
             events = self._get_logs(filter_params)
         except Exception:
-            pass
+            # if errors should not be retried, still do splitting but not retry if it can not be split further
+            if not self.w3.should_retry and num_blocks == 1:
+                raise
         else:
             if p_bar is not None:
                 p_bar.update(num_blocks)
