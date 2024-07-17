@@ -87,8 +87,8 @@ class EthAdvanced(Eth):
             wrapped_prop = property(exponential_retry(func_name=prop_name)(prop.fget))
             setattr(self.__class__, prop_name, wrapped_prop)
 
-    def get_logs(self, filter_params: FilterParams) -> list[LogReceipt]:
-        # note: fromBlock and toBlock are both inclusive. e.g. 5 to 6 are 2 blocks
+    def get_logs(self, filter_params: FilterParams, show_progress_bar=False, p_bar=None) -> list[LogReceipt]:
+        # getting the respective block numbers, could be block hashes or strings like "latest"
         from_block = filter_params["fromBlock"]
         to_block = filter_params["toBlock"]
         if not isinstance(from_block, int):
@@ -96,25 +96,38 @@ class EthAdvanced(Eth):
         if not isinstance(to_block, int):
             to_block = self.get_block(to_block)["number"]
 
+        # note: fromBlock and toBlock are both inclusive. e.g. 5 to 6 are 2 blocks
+        num_blocks = to_block - from_block + 1
+
+        # check if progress bar needs initialization
+        if show_progress_bar and p_bar is None:
+            # local import as tqdm is an optional dependency of this package
+            from tqdm import tqdm
+            p_bar = tqdm(total=num_blocks)
+
         # if we already know that the filter range is too large, split it
-        if to_block - from_block + 1 > self.filter_block_range:
+        if num_blocks > self.filter_block_range:
             results = []
             for filter_start in range(from_block, to_block + 1, self.filter_block_range):
                 filter_end = min(filter_start + self.filter_block_range - 1, to_block)
                 partial_filter = filter_params.copy()
                 partial_filter["fromBlock"] = filter_start
                 partial_filter["toBlock"] = filter_end
-                results += self.get_logs(partial_filter)
+                results += self.get_logs(partial_filter, show_progress_bar=show_progress_bar, p_bar=p_bar)
             return results
 
         # get logs
         try:
-            return self._get_logs(filter_params)
+            events = self._get_logs(filter_params)
         except Exception:
             pass
+        else:
+            if p_bar is not None:
+                p_bar.update(num_blocks)
+            return events
 
         # if directly getting logs did not work, split the filter range and try again
-        if from_block != to_block:
+        if num_blocks > 1:
             mid_block = (from_block + to_block) // 2
             left_filter = filter_params.copy()
             left_filter["toBlock"] = mid_block
@@ -122,13 +135,16 @@ class EthAdvanced(Eth):
             right_filter["fromBlock"] = mid_block + 1
 
             results = []
-            results += self.get_logs(left_filter)
-            results += self.get_logs(right_filter)
+            results += self.get_logs(left_filter, show_progress_bar=show_progress_bar, p_bar=p_bar)
+            results += self.get_logs(right_filter, show_progress_bar=show_progress_bar, p_bar=p_bar)
             return results
 
         # filter is trying to get a single block, retrying till it works
-        assert from_block == to_block
-        return exponential_retry(func_name="get_logs")(self._get_logs)(filter_params)
+        assert from_block == to_block and num_blocks == 1
+        events = exponential_retry(func_name="get_logs")(self._get_logs)(filter_params)
+        if p_bar is not None:
+            p_bar.update(num_blocks)
+        return events
 
     def _find_max_filter_range(self):
         current_block = self.block_number
