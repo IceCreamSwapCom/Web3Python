@@ -46,7 +46,7 @@ class EthAdvanced(Eth):
     ]
 
     PROPERTIES_TO_RETRY = [
-        'accounts', 'hashrate', 'block_number', 'chain_id', 'coinbase', 'gas_price',
+        'accounts', 'hashrate', 'block_number', 'coinbase', 'gas_price',
         'max_priority_fee', 'mining', 'syncing'
     ]
 
@@ -73,6 +73,8 @@ class EthAdvanced(Eth):
         if self.w3.should_retry:
             self._wrap_methods_with_retry()
 
+        self.chain_id_cached = super()._chain_id()
+
         self.filter_block_range = self._find_max_filter_range()
 
     def _wrap_methods_with_retry(self):
@@ -93,6 +95,8 @@ class EthAdvanced(Eth):
             from_block = self.get_block(from_block)["number"]
         if not isinstance(to_block, int):
             to_block = self.get_block(to_block)["number"]
+
+        assert to_block >= from_block, f"{from_block=}, {to_block=}"
 
         # note: fromBlock and toBlock are both inclusive. e.g. 5 to 6 are 2 blocks
         num_blocks = to_block - from_block + 1
@@ -140,7 +144,7 @@ class EthAdvanced(Eth):
             return results
 
         # filter is trying to get a single block, retrying till it works
-        assert from_block == to_block and num_blocks == 1
+        assert from_block == to_block and num_blocks == 1, f"{from_block=}, {to_block=}, {num_blocks=}"
         events = exponential_retry(func_name="get_logs")(self._get_logs)(filter_params)
         if p_bar is not None:
             p_bar.update(num_blocks)
@@ -162,3 +166,7 @@ class EthAdvanced(Eth):
             except Exception:
                 pass
         raise ValueError("Unable to use eth_getLogs")
+
+    def _chain_id(self):
+        # usually this causes an RPC call and is used in every eth_call. Getting it once in the init and then not again.
+        return self.chain_id_cached

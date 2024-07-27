@@ -24,7 +24,6 @@ class Web3Advanced(Web3):
         super().__init__(provider=provider, modules=modules)
 
         self.middleware_onion.inject(geth_poa_middleware, layer=0, name="poa")  # required for pos chains
-        self._chain_id = self.eth.chain_id  # avoids many RPC calls to get chain ID
 
     @staticmethod
     def _construct_provider(node_url):
