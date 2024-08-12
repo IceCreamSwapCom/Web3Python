@@ -1,0 +1,23 @@
+[
+	{
+		"inputs": [
+			{
+				"internalType": "bool",
+				"name": "useRevert",
+				"type": "bool"
+			},
+			{
+				"internalType": "bytes",
+				"name": "contractBytecode",
+				"type": "bytes"
+			},
+			{
+				"internalType": "bytes",
+				"name": "encodedCalls",
+				"type": "bytes"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	}
+]
