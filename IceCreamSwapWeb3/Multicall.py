@@ -1,4 +1,5 @@
 import copy
+from importlib.resources import files
 from time import sleep
 from typing import Optional
 
@@ -13,13 +14,13 @@ from web3.exceptions import ContractLogicError
 from IceCreamSwapWeb3 import Web3Advanced
 
 # load multicall abi
-with open("./abi/Multicall.abi") as f:
+with files("IceCreamSwapWeb3").joinpath("./abi/Multicall.abi").open('r') as f:
     MULTICALL_ABI = f.read()
 
 # load undeployed multicall abi and bytecode
-with open("./abi/UndeployedMulticall.abi") as f:
+with files("IceCreamSwapWeb3").joinpath("./abi/UndeployedMulticall.abi").open('r') as f:
     UNDEPLOYED_MULTICALL_ABI = f.read()
-with open("./bytecode/UndeployedMulticall.bytecode") as f:
+with files("IceCreamSwapWeb3").joinpath("./bytecode/UndeployedMulticall.bytecode").open('r') as f:
     UNDEPLOYED_MULTICALL_BYTECODE = f.read()
 
 # allowed chars in HEX string
