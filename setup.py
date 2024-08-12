@@ -6,6 +6,7 @@ LONG_DESCRIPTION = 'IceCreamSwap Web3.py wrapper with automatic retries and adva
 
 requirements = [
     'web3',
+    'rlp',
 ]
 
 # Setting up

@@ -1,13 +1,16 @@
 from time import sleep
+from typing import Optional
 
 from web3.eth import Eth
 from web3.exceptions import ContractLogicError
-from web3.types import FilterParams, LogReceipt
+from web3.types import FilterParams, LogReceipt, CallOverride, BlockIdentifier, TxParams
+
+from IceCreamSwapWeb3 import Web3Advanced
 
 
 def exponential_retry(func_name: str = None):
     def wrapper(func):
-        def inner(*args, no_retry=False, **kwargs):
+        def inner(*args, no_retry: bool = False, **kwargs):
             if no_retry:
                 return func(*args, **kwargs)
 
@@ -33,9 +36,10 @@ def exponential_retry(func_name: str = None):
 
 
 class EthAdvanced(Eth):
-    # todo: implement multicall
+    w3: Web3Advanced
+
     METHODS_TO_RETRY = [
-        'fee_history', 'call', 'create_access_list', 'estimate_gas',
+        'fee_history', 'create_access_list', 'estimate_gas',
         'get_transaction', 'get_raw_transaction', 'get_raw_transaction_by_block',
         'send_transaction', 'send_raw_transaction', 'get_block', 'get_balance',
         'get_code', 'get_transaction_count', 'get_transaction_receipt',
@@ -50,23 +54,6 @@ class EthAdvanced(Eth):
         'max_priority_fee', 'mining', 'syncing'
     ]
 
-    FILTER_RANGES_TO_TRY = sorted([
-        10_000,
-        5_000,
-        2_000,
-        1_000,
-        500,
-        200,
-        100,
-        50,
-        20,
-        10,
-        5,
-        2,
-        1
-    ], reverse=True)
-    assert FILTER_RANGES_TO_TRY[-1] == 1
-
     def __init__(self, w3):
         super().__init__(w3=w3)
 
@@ -74,8 +61,6 @@ class EthAdvanced(Eth):
             self._wrap_methods_with_retry()
 
         self.chain_id_cached = super()._chain_id()
-
-        self.filter_block_range = self._find_max_filter_range()
 
     def _wrap_methods_with_retry(self):
         for method_name in self.METHODS_TO_RETRY:
@@ -86,6 +71,26 @@ class EthAdvanced(Eth):
             prop = getattr(self.__class__, prop_name)
             wrapped_prop = property(exponential_retry(func_name=prop_name)(prop.fget))
             setattr(self.__class__, prop_name, wrapped_prop)
+
+    def call(
+            self,
+            transaction: TxParams,
+            block_identifier: Optional[BlockIdentifier] = None,
+            state_override: Optional[CallOverride] = None,
+            ccip_read_enabled: Optional[bool] = None,
+            no_retry: bool = None,
+    ):
+        if "no_retry" in transaction:
+            no_retry = transaction["no_retry"]
+            del transaction["no_retry"]
+
+        return exponential_retry(func_name="call")(super().call)(
+            transaction=transaction,
+            block_identifier=block_identifier,
+            state_override=state_override,
+            ccip_read_enabled=ccip_read_enabled,
+            no_retry=no_retry,
+        )
 
     def get_logs(self, filter_params: FilterParams, show_progress_bar=False, p_bar=None) -> list[LogReceipt]:
         # getting the respective block numbers, could be block hashes or strings like "latest"
@@ -108,10 +113,13 @@ class EthAdvanced(Eth):
             p_bar = tqdm(total=num_blocks)
 
         # if we already know that the filter range is too large, split it
-        if num_blocks > self.filter_block_range:
+        filter_block_range = self.w3.filter_block_range
+        if filter_block_range == 0:
+            raise Exception("RPC does not support eth_getLogs")
+        if num_blocks > filter_block_range:
             results = []
-            for filter_start in range(from_block, to_block + 1, self.filter_block_range):
-                filter_end = min(filter_start + self.filter_block_range - 1, to_block)
+            for filter_start in range(from_block, to_block + 1, filter_block_range):
+                filter_end = min(filter_start + filter_block_range - 1, to_block)
                 partial_filter = filter_params.copy()
                 partial_filter["fromBlock"] = filter_start
                 partial_filter["toBlock"] = filter_end
@@ -149,23 +157,6 @@ class EthAdvanced(Eth):
         if p_bar is not None:
             p_bar.update(num_blocks)
         return events
-
-    def _find_max_filter_range(self):
-        current_block = self.block_number
-        for filter_range in self.FILTER_RANGES_TO_TRY:
-            try:
-                # getting logs from the 0 address as it does not emit any logs.
-                # This way we can test the maximum allowed filter range without getting back a ton of logs
-                result = self._get_logs({
-                    "address": "0x0000000000000000000000000000000000000000",
-                    "fromBlock": current_block - 5 - filter_range + 1,
-                    "toBlock": current_block - 5,
-                })
-                assert result == []
-                return filter_range
-            except Exception:
-                pass
-        raise ValueError("Unable to use eth_getLogs")
 
     def _chain_id(self):
         # usually this causes an RPC call and is used in every eth_call. Getting it once in the init and then not again.
