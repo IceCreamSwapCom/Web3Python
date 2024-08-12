@@ -10,17 +10,17 @@ from web3._utils.abi import get_abi_output_types
 from web3.contract.contract import ContractFunction, ContractConstructor
 from web3.exceptions import ContractLogicError
 
-from IceCreamSwapWeb3 import Web3Advanced
+from .Web3Advanced import Web3Advanced
 
 
 # load multicall abi
-with open("abi/Multicall.abi") as f:
+with open("./abi/Multicall.abi") as f:
     MULTICALL_ABI = f.read()
 
 # load undeployed multicall abi and bytecode
-with open("abi/UndeployedMulticall.abi") as f:
+with open("./abi/UndeployedMulticall.abi") as f:
     UNDEPLOYED_MULTICALL_ABI = f.read()
-with open("bytecode/UndeployedMulticall.bytecode") as f:
+with open("./bytecode/UndeployedMulticall.bytecode") as f:
     UNDEPLOYED_MULTICALL_BYTECODE = f.read()
 
 # allowed chars in HEX string
@@ -326,11 +326,11 @@ def main(
 ):
     w3 = Web3Advanced(node_url=node_url)
 
-    with open("abi/Counter.abi") as f:
+    with open("./abi/Counter.abi") as f:
         counter_contract_abi = f.read()
-    with open("bytecode/Counter.bytecode") as f:
+    with open("./bytecode/Counter.bytecode") as f:
         counter_contract_bytecode = f.read()
-    with open("abi/ERC20.abi") as f:
+    with open("./abi/ERC20.abi") as f:
         erc20_abi = f.read()
 
     counter_contract = w3.eth.contract(bytecode=counter_contract_bytecode, abi=counter_contract_abi)
