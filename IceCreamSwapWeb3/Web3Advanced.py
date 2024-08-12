@@ -4,6 +4,7 @@ from web3.main import get_default_modules
 from web3.middleware import geth_poa_middleware
 
 from .EthAdvanced import EthAdvanced
+from .Multicall import MultiCall
 
 
 class Web3Advanced(Web3):
@@ -59,6 +60,9 @@ class Web3Advanced(Web3):
             return Web3.WebsocketProvider(node_url)
         else:
             raise ValueError(f"Unknown protocol for RPC URL {node_url}")
+
+    def start_multicall(self) -> MultiCall:
+        return MultiCall(w3=self)
 
     def _find_max_filter_range(self):
         current_block = self.eth.block_number

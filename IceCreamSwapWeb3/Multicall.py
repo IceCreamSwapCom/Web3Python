@@ -325,7 +325,6 @@ def main(
         usdt_address=to_checksum_address("0x900101d06A7426441Ae63e9AB3B9b0F63Be145F1"),
 ):
     w3 = Web3Advanced(node_url=node_url)
-    multicall = MultiCall(w3=w3)
 
     with open("abi/Counter.abi") as f:
         counter_contract_abi = f.read()
@@ -337,19 +336,18 @@ def main(
     counter_contract = w3.eth.contract(bytecode=counter_contract_bytecode, abi=counter_contract_abi)
     usdt_contract = w3.eth.contract(address=usdt_address, abi=erc20_abi)
 
+    # initializing new multicall
+    multicall = w3.start_multicall()
+
     # calling an undeployed contract
-    # '''
     multicall.add_undeployed_contract(counter_contract.constructor(initialCounter=13))
     multicall.add_undeployed_contract_call(counter_contract.functions.counter())
     multicall.add_undeployed_contract_call(counter_contract.functions.updateCounter(newCounter=7))
     multicall.add_undeployed_contract_call(counter_contract.functions.counter())
-    # '''
 
-    # '''
     for _ in range(10_000):
         # calling a deployed contract
         multicall.add_call(usdt_contract.functions.decimals())
-    # '''
 
     multicall_result = multicall.call()
     print(multicall_result)
