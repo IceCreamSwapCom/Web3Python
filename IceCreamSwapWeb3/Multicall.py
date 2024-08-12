@@ -10,8 +10,7 @@ from web3._utils.abi import get_abi_output_types
 from web3.contract.contract import ContractFunction, ContractConstructor
 from web3.exceptions import ContractLogicError
 
-from .Web3Advanced import Web3Advanced
-
+from IceCreamSwapWeb3 import Web3Advanced
 
 # load multicall abi
 with open("./abi/Multicall.abi") as f:
