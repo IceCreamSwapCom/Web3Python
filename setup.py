@@ -28,6 +28,7 @@ setup(
         "Operating System :: Microsoft :: Windows",
     ],
     package_data={
-        '': ['*.abi', '*.bytecode'],  # Include all .abi and .bytecode files from any directory
+        # Ensure this path reflects the structure inside your package
+        'IceCreamSwapWeb3': ['abi/*.abi', 'bytecode/*.bytecode'],
     },
 )
