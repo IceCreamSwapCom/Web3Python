@@ -7,7 +7,7 @@ import eth_abi
 import eth_utils
 import rlp
 from eth_utils import to_checksum_address, to_bytes
-from web3._utils.abi import get_abi_output_types
+from web3._utils.abi import get_abi_output_types, get_abi_input_types
 from web3.contract.contract import ContractFunction, ContractConstructor
 from web3.exceptions import ContractLogicError
 
@@ -31,7 +31,7 @@ class MultiCall:
     CALLER_ADDRESS = "0x0000000000000000000000000000000000000123"
 
     MULTICALL_DEPLOYMENTS: dict[int, str] = {
-        1116: "0x2C310a21E21a3eaDF4e53E1118aeD4614c51B576"
+        1116: "0x2cd05AcF9aBe54D57eb1E6B12f2129880fA4cF65",
     }
 
     @classmethod
@@ -75,46 +75,59 @@ class MultiCall:
         if use_revert is None:
             use_revert = self.w3.revert_reason_available
 
-        return self._inner_call(use_revert=use_revert, calls=self.calls, batch_size=batch_size)
+        calls = self.calls
+        calls_with_calldata = self.add_calls_calldata(calls)
 
-    def _inner_call(self, use_revert: bool, calls: list[ContractFunction], batch_size: int):
+        return self._inner_call(use_revert=use_revert, calls_with_calldata=calls_with_calldata, batch_size=batch_size)
+
+    def _inner_call(
+            self,
+            use_revert: bool,
+            calls_with_calldata: list[tuple[ContractFunction, bytes]],
+            batch_size: int
+    ):
         kwargs = dict(
             use_revert=use_revert,
             batch_size=batch_size,
         )
         # make sure calls are not bigger than batch_size
-        if len(calls) > batch_size:
+        if len(calls_with_calldata) > batch_size:
             results = []
-            for start in range(0, len(calls), batch_size):
+            for start in range(0, len(calls_with_calldata), batch_size):
                 results += self._inner_call(
                     **kwargs,
-                    calls=calls[start: min(start + batch_size, len(calls))],
+                    calls_with_calldata=calls_with_calldata[start: min(start + batch_size, len(calls_with_calldata))],
                 )
             return results
 
         if self.multicall.address is None:
-            multicall_call = self._build_constructor_calldata(calls=calls, use_revert=use_revert)
+            multicall_call = self._build_constructor_calldata(
+                calls_with_calldata=calls_with_calldata,
+                use_revert=use_revert
+            )
         else:
-            multicall_call = self._build_calldata(calls=calls)
+            multicall_call = self._build_calldata(
+                calls_with_calldata=calls_with_calldata
+            )
         try:
             raw_returns = self._call_multicall(
                 multicall_call=multicall_call,
-                retry=len(calls) == 1
+                retry=len(calls_with_calldata) == 1
             )
         except Exception as e:
-            if len(calls) == 1:
+            if len(calls_with_calldata) == 1:
                 print(f"Multicall with single call got Exception '{repr(e)}', retrying in 1 sec")
                 sleep(1)
-                return self._inner_call(**kwargs, calls=calls)
+                return self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata)
             print(f"Multicall got Exception '{repr(e)}', splitting and retrying")
-            left_results = self._inner_call(**kwargs, calls=calls[:len(calls) // 2])
-            right_results = self._inner_call(**kwargs, calls=calls[len(calls) // 2:])
+            left_results = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[:len(calls_with_calldata) // 2])
+            right_results = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[len(calls_with_calldata) // 2:])
             return left_results + right_results
-        results = self.decode_contract_function_results(raw_returns=raw_returns, contract_functions=calls)
-        if len(results) == len(calls):
+        results = self.decode_contract_function_results(raw_returns=raw_returns, contract_functions=[call for call, _ in calls_with_calldata])
+        if len(results) == len(calls_with_calldata):
             return results
         # if not all calls were executed, recursively execute remaining calls and concatenate results
-        return results + self._inner_call(**kwargs, calls=calls[len(results):])
+        return results + self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[len(results):])
 
     @staticmethod
     def calculate_expected_contract_address(sender: str, nonce: int):
@@ -125,33 +138,47 @@ class MultiCall:
     @staticmethod
     def calculate_create_address(sender: str, nonce: int) -> str:
         assert len(sender) == 42
-        sender_bytes = eth_utils.to_bytes(hexstr=sender)
+        sender_bytes = to_bytes(hexstr=sender)
         raw = rlp.encode([sender_bytes, nonce])
         h = eth_utils.keccak(raw)
         address_bytes = h[12:]
         return eth_utils.to_checksum_address(address_bytes)
 
-    def _build_calldata(self, calls: list[ContractFunction]) -> ContractFunction:
+    @staticmethod
+    def add_calls_calldata(calls: list[ContractFunction]) -> list[tuple[ContractFunction, bytes]]:
+        calls_with_calldata = []
+        for call in calls:
+            function_abi = get_abi_input_types(call.abi)
+            assert len(function_abi) == len(call.arguments)
+            function_args = []
+            for aby_type, arg in zip(function_abi, call.arguments):
+                if aby_type == "bytes":
+                    arg = to_bytes(hexstr=arg)
+                function_args.append(arg)
+            call_data = to_bytes(hexstr=call.selector) + eth_abi.encode(function_abi, function_args)
+            calls_with_calldata.append((call, call_data))
+        assert len(calls_with_calldata) == len(calls)
+        return calls_with_calldata
+
+    def _build_calldata(self, calls_with_calldata: list[tuple[ContractFunction, bytes]]) -> ContractFunction:
         assert self.multicall.address is not None
 
         if self.undeployed_contract_constructor is not None:
             # deploy undeployed contract first and then call the other functions
             contract_deployment_call = self.multicall.functions.deployContract(
-                contractBytecode=self.undeployed_contract_constructor.data_in_transaction
+                contractBytecode=to_bytes(hexstr=self.undeployed_contract_constructor.data_in_transaction)
             )
-            calls = [contract_deployment_call] + calls
+            contract_deployment_calldata = to_bytes(hexstr=contract_deployment_call.selector) + \
+                                           eth_abi.encode(
+                                               get_abi_input_types(contract_deployment_call.abi),
+                                               contract_deployment_call.arguments
+                                           )
+            # contract_deployment_calldata = to_bytes(hexstr=contract_deployment_call._encode_transaction_data())
+            calls_with_calldata = [(contract_deployment_call, contract_deployment_calldata)] + calls_with_calldata
 
         encoded_calls = []
-        for call in calls:
-            target = call.address
-            call_data_hex = call._encode_transaction_data()
-            call_data = to_bytes(hexstr=call_data_hex)
-
-            encoded_calls.append({
-                "target": target,
-                "gasLimit": 100_000_000,
-                "callData": call_data,
-            })
+        for call, call_data in calls_with_calldata:
+            encoded_calls.append((call.address, 100_000_000, call_data))  # target, gasLimit, callData
 
         # build multicall transaction
         multicall_call = self.multicall.functions.multicallWithGasLimitation(
@@ -162,20 +189,22 @@ class MultiCall:
         # return multicall address and calldata
         return multicall_call
 
-    def _build_constructor_calldata(self, calls: list[ContractFunction], use_revert: bool) -> ContractConstructor:
+    def _build_constructor_calldata(
+            self,
+            calls_with_calldata: list[tuple[ContractFunction, bytes]],
+            use_revert: bool
+    ) -> ContractConstructor:
         assert self.multicall.address is None
 
         # Encode the number of calls as the first 32 bytes
-        number_of_calls = len(calls)
+        number_of_calls = len(calls_with_calldata)
         encoded_calls = eth_abi.encode(['uint256'], [number_of_calls]).hex()
 
         previous_target = None
         previous_call_data = None
 
-        for call in calls:
+        for call, call_data in calls_with_calldata:
             target = call.address
-            call_data_hex = call._encode_transaction_data()
-            call_data = to_bytes(hexstr=call_data_hex)
 
             # Determine the flags
             flags = 0
@@ -197,7 +226,7 @@ class MultiCall:
                 # Encode call data length (16 bits / 2 bytes)
                 call_data_length_encoded = eth_abi.encode(['uint16'], [len(call_data)]).hex().zfill(4)[-4:]
                 # Encode call data (variable length)
-                call_data_encoded = call_data_hex[2:]
+                call_data_encoded = call_data.hex()
             else:
                 call_data_length_encoded = ""
                 call_data_encoded = ""
@@ -215,7 +244,7 @@ class MultiCall:
         multicall_call = self.multicall.constructor(
             useRevert=use_revert,
             contractBytecode=contract_constructor_data,
-            encodedCalls=bytes.fromhex(encoded_calls)
+            encodedCalls=to_bytes(hexstr=encoded_calls)
         )
 
         return multicall_call
@@ -224,7 +253,7 @@ class MultiCall:
     def _decode_muilticall(multicall_result: bytes | list[tuple[bool, int, bytes]]) -> list[str | Exception]:
         raw_returns: list[str or Exception] = []
 
-        if isinstance(multicall_result, list):
+        if isinstance(multicall_result, list) or isinstance(multicall_result, tuple):
             # deployed multicall
             for sucess, _, raw_return in multicall_result:
                 if not sucess:
@@ -281,24 +310,39 @@ class MultiCall:
                 })
             else:
                 assert isinstance(multicall_call, ContractFunction)
-                _, multicall_result, _ = multicall_call.call({
+                # manually encoding and decoding call because web3.py is sooooo slow...
+                # The simple but slow version is as below:
+                # _, multicall_result, completed_calls = multicall_call.call({
+                #     "from": self.CALLER_ADDRESS,
+                #     "nonce": 0,
+                #     "no_retry": not retry,
+                # })
+
+                calldata = to_bytes(hexstr=multicall_call.selector) + \
+                           eth_abi.encode(get_abi_input_types(multicall_call.abi), multicall_call.arguments)
+                raw_response = self.w3.eth.call({
                     "from": self.CALLER_ADDRESS,
+                    "to": multicall_call.address,
                     "nonce": 0,
+                    "data": calldata,
                     "no_retry": not retry,
                 })
+                _, multicall_result, completed_calls = eth_abi.decode(get_abi_output_types(multicall_call.abi), raw_response)
+
                 if self.undeployed_contract_constructor is not None:
                     # remove first call result as that's the deployment of the undeployed contract
                     success, _, address_encoded = multicall_result[0]
                     assert success, "Undeployed contract constructor reverted"
                     assert "0x" + address_encoded[-20:].hex() == self.undeployed_contract_address.lower(), "unexpected undeployed contract address"
                     multicall_result = multicall_result[1:]
+                multicall_result = multicall_result[:completed_calls]
         except ContractLogicError as e:
             if not e.message.startswith("execution reverted: "):
                 raise
             result_str = e.message.removeprefix("execution reverted: ")
             if any((char not in HEX_CHARS for char in result_str)):
                 raise
-            multicall_result = bytes.fromhex(result_str)
+            multicall_result = to_bytes(hexstr=result_str)
 
         if len(multicall_result) == 0:
             raise ValueError("No data returned from multicall")
@@ -310,8 +354,7 @@ class MultiCall:
         if isinstance(raw_return, Exception):
             return raw_return
         try:
-            output_types = get_abi_output_types(contract_function.abi)
-            result = contract_function.w3.codec.decode(output_types, raw_return)
+            result = eth_abi.decode(get_abi_output_types(contract_function.abi), raw_return)
             if hasattr(result, "__len__") and len(result) == 1:
                 result = result[0]
             return result
