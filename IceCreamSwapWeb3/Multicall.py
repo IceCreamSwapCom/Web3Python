@@ -78,14 +78,17 @@ class MultiCall:
         return self._inner_call(use_revert=use_revert, calls=self.calls, batch_size=batch_size)
 
     def _inner_call(self, use_revert: bool, calls: list[ContractFunction], batch_size: int):
+        kwargs = dict(
+            use_revert=use_revert,
+            batch_size=batch_size,
+        )
         # make sure calls are not bigger than batch_size
         if len(calls) > batch_size:
             results = []
             for start in range(0, len(calls), batch_size):
                 results += self._inner_call(
-                    use_revert=use_revert,
+                    **kwargs,
                     calls=calls[start: min(start + batch_size, len(calls))],
-                    batch_size=batch_size
                 )
             return results
 
@@ -102,16 +105,16 @@ class MultiCall:
             if len(calls) == 1:
                 print(f"Multicall with single call got Exception '{repr(e)}', retrying in 1 sec")
                 sleep(1)
-                return self._inner_call(use_revert=use_revert, calls=calls)
+                return self._inner_call(**kwargs, calls=calls)
             print(f"Multicall got Exception '{repr(e)}', splitting and retrying")
-            left_results = self._inner_call(use_revert=use_revert, calls=calls[:len(calls) // 2])
-            right_results = self._inner_call(use_revert=use_revert, calls=calls[len(calls) // 2:])
+            left_results = self._inner_call(**kwargs, calls=calls[:len(calls) // 2])
+            right_results = self._inner_call(**kwargs, calls=calls[len(calls) // 2:])
             return left_results + right_results
         results = self.decode_contract_function_results(raw_returns=raw_returns, contract_functions=calls)
         if len(results) == len(calls):
             return results
         # if not all calls were executed, recursively execute remaining calls and concatenate results
-        return results + self._inner_call(use_revert=use_revert, calls=calls[len(results):])
+        return results + self._inner_call(**kwargs, calls=calls[len(results):])
 
     @staticmethod
     def calculate_expected_contract_address(sender: str, nonce: int):
