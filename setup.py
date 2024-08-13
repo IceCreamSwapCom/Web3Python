@@ -19,8 +19,6 @@ setup(
     long_description=LONG_DESCRIPTION,
     packages=find_packages(),
     install_requires=requirements,
-    # needs to be installed along with your package.
-
     keywords=['python', 'IceCreamSwapWeb3'],
     classifiers=[
         "Development Status :: 3 - Alpha",
@@ -28,5 +26,8 @@ setup(
         "Programming Language :: Python :: 3",
         "Operating System :: MacOS :: MacOS X",
         "Operating System :: Microsoft :: Windows",
-    ]
+    ],
+    package_data={
+        '': ['*.abi', '*.bytecode'],  # Include all .abi and .bytecode files from any directory
+    },
 )
