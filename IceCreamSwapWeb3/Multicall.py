@@ -326,11 +326,11 @@ def main(
 ):
     w3 = Web3Advanced(node_url=node_url)
 
-    with open("./abi/Counter.abi") as f:
+    with files("IceCreamSwapWeb3").joinpath("./abi/Counter.abi").open('r') as f:
         counter_contract_abi = f.read()
-    with open("./bytecode/Counter.bytecode") as f:
+    with files("IceCreamSwapWeb3").joinpath("./bytecode/Counter.bytecode").open('r') as f:
         counter_contract_bytecode = f.read()
-    with open("./abi/ERC20.abi") as f:
+    with files("IceCreamSwapWeb3").joinpath("./abi/ERC20.abi").open('r') as f:
         erc20_abi = f.read()
 
     counter_contract = w3.eth.contract(bytecode=counter_contract_bytecode, abi=counter_contract_abi)

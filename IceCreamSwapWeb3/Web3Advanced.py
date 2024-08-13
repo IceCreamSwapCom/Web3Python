@@ -1,3 +1,5 @@
+from importlib.resources import files
+
 from web3 import Web3
 from web3.exceptions import ContractLogicError
 from web3.main import get_default_modules
@@ -83,9 +85,9 @@ class Web3Advanced(Web3):
         return 0
 
     def _check_revert_reason_available(self):
-        with open("abi/RevertTester.abi") as f:
+        with files("IceCreamSwapWeb3").joinpath("./abi/RevertTester.abi").open('r') as f:
             revert_tester_abi = f.read()
-        with open("bytecode/RevertTester.bytecode") as f:
+        with files("IceCreamSwapWeb3").joinpath("./bytecode/RevertTester.bytecode").open('r') as f:
             revert_tester_bytecode = f.read()
         revert_tester_contract = self.eth.contract(abi=revert_tester_abi, bytecode=revert_tester_bytecode)
         try:
