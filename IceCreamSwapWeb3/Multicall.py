@@ -31,8 +31,8 @@ class MultiCall:
     CALLER_ADDRESS = "0x0000000000000000000000000000000000000123"
 
     MULTICALL_DEPLOYMENTS: dict[int, str] = {
-        56: "0xce8D8D579Da261bBbb5A583bE2E5d49Ee1C70462",
-        1116: "0x2cd05AcF9aBe54D57eb1E6B12f2129880fA4cF65",
+        56: "0xDD020f51961febA6C989b1865c44f3bFcEfCA58d",
+        1116: "0x2De75065f4161c797d7168cE63CBc0261FE1ccF9",
     }
 
     @classmethod
@@ -330,13 +330,14 @@ class MultiCall:
                 })
                 _, multicall_result, completed_calls = eth_abi.decode(get_abi_output_types(multicall_call.abi), raw_response)
 
+                multicall_result = multicall_result[:completed_calls]
+
                 if self.undeployed_contract_constructor is not None:
                     # remove first call result as that's the deployment of the undeployed contract
                     success, _, address_encoded = multicall_result[0]
                     assert success, "Undeployed contract constructor reverted"
                     assert "0x" + address_encoded[-20:].hex() == self.undeployed_contract_address.lower(), "unexpected undeployed contract address"
                     multicall_result = multicall_result[1:]
-                multicall_result = multicall_result[:completed_calls]
         except ContractLogicError as e:
             if not e.message.startswith("execution reverted: "):
                 raise
