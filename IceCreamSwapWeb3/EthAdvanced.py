@@ -78,9 +78,11 @@ class EthAdvanced(Eth):
             block_identifier: Optional[BlockIdentifier] = None,
             state_override: Optional[CallOverride] = None,
             ccip_read_enabled: Optional[bool] = None,
-            no_retry: bool = None,
+            no_retry: bool = False,
     ):
-        if "no_retry" in transaction:
+        if not self.w3.should_retry:
+            no_retry = True
+        elif "no_retry" in transaction:
             no_retry = transaction["no_retry"]
             del transaction["no_retry"]
 
@@ -92,7 +94,16 @@ class EthAdvanced(Eth):
             no_retry=no_retry,
         )
 
-    def get_logs(self, filter_params: FilterParams, show_progress_bar=False, p_bar=None) -> list[LogReceipt]:
+    def get_logs(
+            self,
+            filter_params: FilterParams,
+            show_progress_bar: bool = False,
+            p_bar=None,
+            no_retry: bool = False
+    ) -> list[LogReceipt]:
+        if not self.w3.should_retry:
+            no_retry = True
+
         # getting the respective block numbers, could be block hashes or strings like "latest"
         from_block = filter_params["fromBlock"]
         to_block = filter_params["toBlock"]
@@ -131,7 +142,7 @@ class EthAdvanced(Eth):
             events = self._get_logs(filter_params)
         except Exception:
             # if errors should not be retried, still do splitting but not retry if it can not be split further
-            if not self.w3.should_retry and num_blocks == 1:
+            if no_retry and num_blocks == 1:
                 raise
         else:
             if p_bar is not None:
