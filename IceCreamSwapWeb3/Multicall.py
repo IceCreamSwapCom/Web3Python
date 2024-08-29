@@ -33,6 +33,7 @@ class MultiCall:
     MULTICALL_DEPLOYMENTS: dict[int, str] = {
         56: "0xDD020f51961febA6C989b1865c44f3bFcEfCA58d",
         1116: "0x2De75065f4161c797d7168cE63CBc0261FE1ccF9",
+        40: "0xCA4E8AC62E4A6D26e34039E5ded68dcf9d38bEea",
     }
 
     @classmethod
