@@ -184,7 +184,7 @@ class MultiCall:
         # build multicall transaction
         multicall_call = self.multicall.functions.multicallWithGasLimitation(
             calls=encoded_calls,
-            gasBuffer=10_000_000,
+            gasBuffer=100_000,
         )
 
         # return multicall address and calldata
@@ -332,7 +332,7 @@ class MultiCall:
 
                 multicall_result = multicall_result[:completed_calls]
 
-                if self.undeployed_contract_constructor is not None:
+                if len(multicall_result) > 0 and self.undeployed_contract_constructor is not None:
                     # remove first call result as that's the deployment of the undeployed contract
                     success, _, address_encoded = multicall_result[0]
                     assert success, "Undeployed contract constructor reverted"
