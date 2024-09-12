@@ -31,9 +31,9 @@ class MultiCall:
     CALLER_ADDRESS = "0x0000000000000000000000000000000000000123"
 
     MULTICALL_DEPLOYMENTS: dict[int, str] = {
-        56: "0xDD020f51961febA6C989b1865c44f3bFcEfCA58d",
-        1116: "0x2De75065f4161c797d7168cE63CBc0261FE1ccF9",
-        40: "0xCA4E8AC62E4A6D26e34039E5ded68dcf9d38bEea",
+        56: "0xE396FfB7aa3123E3D742e50Ad409d212f87ADfA6",
+        1116: "0xf7bfc56C50e544ba035d0b27978aF2f072b096f7",
+        40: "0x4E1F64D55cD51E8D8D2125A5c1Fa613E78921C51",
     }
 
     @classmethod
@@ -74,6 +74,10 @@ class MultiCall:
         self.calls.append(contract_func)
 
     def call(self, use_revert: Optional[bool] = None, batch_size: int = 1_000):
+        results, _ = self.call_with_gas(use_revert=use_revert, batch_size=batch_size)
+        return results
+
+    def call_with_gas(self, use_revert: Optional[bool] = None, batch_size: int = 1_000):
         if use_revert is None:
             use_revert = self.w3.revert_reason_available
 
@@ -87,20 +91,23 @@ class MultiCall:
             use_revert: bool,
             calls_with_calldata: list[tuple[ContractFunction, bytes]],
             batch_size: int
-    ):
+    ) -> tuple[list[Exception | tuple[any, ...]], list[int]]:
         kwargs = dict(
             use_revert=use_revert,
             batch_size=batch_size,
         )
         # make sure calls are not bigger than batch_size
         if len(calls_with_calldata) > batch_size:
-            results = []
+            results_combined = []
+            gas_usages_combined = []
             for start in range(0, len(calls_with_calldata), batch_size):
-                results += self._inner_call(
+                results, gas_usages = self._inner_call(
                     **kwargs,
                     calls_with_calldata=calls_with_calldata[start: min(start + batch_size, len(calls_with_calldata))],
                 )
-            return results
+                results_combined += results
+                gas_usages_combined += gas_usages
+            return results_combined, gas_usages_combined
 
         if self.multicall.address is None:
             multicall_call = self._build_constructor_calldata(
@@ -111,8 +118,9 @@ class MultiCall:
             multicall_call = self._build_calldata(
                 calls_with_calldata=calls_with_calldata
             )
+
         try:
-            raw_returns = self._call_multicall(
+            raw_returns, gas_usages = self._call_multicall(
                 multicall_call=multicall_call,
                 retry=len(calls_with_calldata) == 1
             )
@@ -122,14 +130,15 @@ class MultiCall:
                 sleep(1)
                 return self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata)
             print(f"Multicall got Exception '{repr(e)}', splitting and retrying")
-            left_results = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[:len(calls_with_calldata) // 2])
-            right_results = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[len(calls_with_calldata) // 2:])
-            return left_results + right_results
+            left_results, left_gas_usages = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[:len(calls_with_calldata) // 2])
+            right_results, right_gas_usages = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[len(calls_with_calldata) // 2:])
+            return left_results + right_results, left_gas_usages + right_gas_usages
         results = self.decode_contract_function_results(raw_returns=raw_returns, contract_functions=[call for call, _ in calls_with_calldata])
         if len(results) == len(calls_with_calldata):
-            return results
+            return results, gas_usages
         # if not all calls were executed, recursively execute remaining calls and concatenate results
-        return results + self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[len(results):])
+        right_results, right_gas_usages = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[len(results):])
+        return results + right_results, gas_usages + right_gas_usages
 
     @staticmethod
     def calculate_expected_contract_address(sender: str, nonce: int):
@@ -252,17 +261,21 @@ class MultiCall:
         return multicall_call
 
     @staticmethod
-    def _decode_muilticall(multicall_result: bytes | list[tuple[bool, int, bytes]]) -> list[str | Exception]:
+    def _decode_muilticall(
+            multicall_result: bytes | list[tuple[bool, int, bytes]]
+    ) -> tuple[list[str | Exception], list[int]]:
         raw_returns: list[str or Exception] = []
+        gas_usages: list[int] = []
 
         if isinstance(multicall_result, list) or isinstance(multicall_result, tuple):
             # deployed multicall
-            for sucess, _, raw_return in multicall_result:
+            for sucess, gas_usage, raw_return in multicall_result:
                 if not sucess:
                     decoded = MultiCall.get_revert_reason(raw_return)
                     raw_return = ContractLogicError(f"execution reverted: {decoded}")
                 raw_returns.append(raw_return)
-            return raw_returns
+                gas_usages.append(gas_usage)
+            return raw_returns, gas_usages
 
         # undeployed multicall
         # decode returned data into segments
@@ -270,8 +283,8 @@ class MultiCall:
         raw_returns_encoded = []
         while len(multicall_result_copy) != 0:
             data_len = int.from_bytes(multicall_result_copy[:2], byteorder='big')
-            raw_returns_encoded.append(multicall_result_copy[2:data_len+2])
-            multicall_result_copy = multicall_result_copy[data_len+2:]
+            raw_returns_encoded.append(multicall_result_copy[2:data_len])
+            multicall_result_copy = multicall_result_copy[data_len:]
 
         # decode returned data for each call
         for raw_return_encoded in raw_returns_encoded:
@@ -279,14 +292,17 @@ class MultiCall:
                 # we are using packed encoding to decrease size of return data, if not we could have used
                 # success, raw_return = eth_abi.decode(['bool', 'bytes'], raw_return_encoded)
                 success = raw_return_encoded[0] == 1
-                raw_return = raw_return_encoded[1:]
+                gas_usage = int(raw_return_encoded[1:5].hex(), 16)
+                raw_return = raw_return_encoded[5:]
                 if not success:
                     decoded = MultiCall.get_revert_reason(raw_return)
                     raw_return = ContractLogicError(f"execution reverted: {decoded}")
             except Exception as e:
                 raw_return = e
+                gas_usage = None
+            gas_usages.append(gas_usage)
             raw_returns.append(raw_return)
-        return raw_returns
+        return raw_returns, gas_usages
 
     @staticmethod
     def get_revert_reason(revert_bytes: bytes) -> str:
@@ -398,8 +414,8 @@ def main(
         # calling a deployed contract
         multicall.add_call(usdt_contract.functions.decimals())
 
-    multicall_result = multicall.call()
-    print(multicall_result)
+    multicall_results, gas_usages = multicall.call_with_gas()
+    print(list(zip(multicall_results, gas_usages)))
 
 
 if __name__ == "__main__":
