@@ -194,7 +194,7 @@ class MultiCall:
         # build multicall transaction
         multicall_call = self.multicall.functions.multicallWithGasLimitation(
             calls=encoded_calls,
-            gasBuffer=100_000,
+            gasBuffer=1_000_000,
         )
 
         # return multicall address and calldata
