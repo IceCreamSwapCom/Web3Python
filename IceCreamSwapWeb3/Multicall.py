@@ -126,13 +126,22 @@ class MultiCall:
             )
         except Exception as e:
             if len(calls_with_calldata) == 1:
-                print(f"Multicall with single call got Exception '{repr(e)}', retrying in 1 sec")
+                print(f"Multicall with single call got Exception '{repr(e)}', last retry")
                 sleep(1)
-                return self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata)
-            print(f"Multicall got Exception '{repr(e)}', splitting and retrying")
-            left_results, left_gas_usages = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[:len(calls_with_calldata) // 2])
-            right_results, right_gas_usages = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[len(calls_with_calldata) // 2:])
-            return left_results + right_results, left_gas_usages + right_gas_usages
+                try:
+                    raw_returns, gas_usages = self._call_multicall(
+                        multicall_call=multicall_call,
+                        retry=len(calls_with_calldata) == 1
+                    )
+                except Exception as e:
+                    print(f"Multicall with single call got Exception '{repr(e)}', returning Exception")
+                    raw_returns = [e]
+                    gas_usages = [None]
+            else:
+                print(f"Multicall got Exception '{repr(e)}', splitting and retrying")
+                left_results, left_gas_usages = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[:len(calls_with_calldata) // 2])
+                right_results, right_gas_usages = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[len(calls_with_calldata) // 2:])
+                return left_results + right_results, left_gas_usages + right_gas_usages
         results = self.decode_contract_function_results(raw_returns=raw_returns, contract_functions=[call for call, _ in calls_with_calldata])
         if len(results) == len(calls_with_calldata):
             return results, gas_usages
