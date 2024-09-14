@@ -31,9 +31,9 @@ class MultiCall:
     CALLER_ADDRESS = "0x0000000000000000000000000000000000000123"
 
     MULTICALL_DEPLOYMENTS: dict[int, str] = {
-        56: "0xE396FfB7aa3123E3D742e50Ad409d212f87ADfA6",
-        1116: "0xf7bfc56C50e544ba035d0b27978aF2f072b096f7",
-        40: "0x4E1F64D55cD51E8D8D2125A5c1Fa613E78921C51",
+        56: "0x06EF84EE8E60fA7d95277E8232Dd3aEEb1377e17",
+        1116: "0x66BF74f6Afe41fd10a5343B39Dae017EF9CceF1b",
+        40: "0x84C2fb5A4F7219688AF475e74b2ac189966Cc9ba",
     }
 
     @classmethod
@@ -124,24 +124,27 @@ class MultiCall:
                 multicall_call=multicall_call,
                 retry=len(calls_with_calldata) == 1
             )
-        except Exception as e:
+        except Exception:
             if len(calls_with_calldata) == 1:
-                print(f"Multicall with single call got Exception '{repr(e)}', last retry")
-                sleep(1)
                 try:
                     raw_returns, gas_usages = self._call_multicall(
                         multicall_call=multicall_call,
                         retry=len(calls_with_calldata) == 1
                     )
                 except Exception as e:
-                    print(f"Multicall with single call got Exception '{repr(e)}', returning Exception")
                     raw_returns = [e]
                     gas_usages = [None]
             else:
-                print(f"Multicall got Exception '{repr(e)}', splitting and retrying")
                 left_results, left_gas_usages = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[:len(calls_with_calldata) // 2])
                 right_results, right_gas_usages = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[len(calls_with_calldata) // 2:])
                 return left_results + right_results, left_gas_usages + right_gas_usages
+        else:
+            if len(raw_returns) != len(calls_with_calldata) and len(raw_returns) > 1:
+                # multicall stopped in the middle due to running out of gas.
+                # better remove the last result.
+                raw_returns = raw_returns[:-1]
+                gas_usages = gas_usages[:-1]
+        assert len(raw_returns) == len(gas_usages)
         results = self.decode_contract_function_results(raw_returns=raw_returns, contract_functions=[call for call, _ in calls_with_calldata])
         if len(results) == len(calls_with_calldata):
             return results, gas_usages
@@ -354,9 +357,7 @@ class MultiCall:
                     "data": calldata,
                     "no_retry": not retry,
                 })
-                _, multicall_result, completed_calls = eth_abi.decode(get_abi_output_types(multicall_call.abi), raw_response)
-
-                multicall_result = multicall_result[:completed_calls]
+                _, multicall_result = eth_abi.decode(get_abi_output_types(multicall_call.abi), raw_response)
 
                 if len(multicall_result) > 0 and self.undeployed_contract_constructor is not None:
                     # remove first call result as that's the deployment of the undeployed contract
