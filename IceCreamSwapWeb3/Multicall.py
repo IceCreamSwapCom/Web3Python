@@ -1,6 +1,5 @@
 import copy
 from importlib.resources import files
-from time import sleep
 from typing import Optional
 
 import eth_abi
@@ -70,7 +69,7 @@ class MultiCall:
     def add_undeployed_contract_call(self, contract_func: ContractFunction):
         assert self.undeployed_contract_constructor is not None, "No undeployed contract added yet"
         contract_func = copy.copy(contract_func)
-        contract_func.address = self.undeployed_contract_address
+        contract_func.address = 0  # self.undeployed_contract_address
         self.calls.append(contract_func)
 
     def call(self, use_revert: Optional[bool] = None, batch_size: int = 1_000):
@@ -122,9 +121,9 @@ class MultiCall:
         try:
             raw_returns, gas_usages = self._call_multicall(
                 multicall_call=multicall_call,
-                retry=len(calls_with_calldata) == 1
+                retry=False
             )
-        except Exception:
+        except Exception as e:
             if len(calls_with_calldata) == 1:
                 try:
                     raw_returns, gas_usages = self._call_multicall(
@@ -201,7 +200,8 @@ class MultiCall:
 
         encoded_calls = []
         for call, call_data in calls_with_calldata:
-            encoded_calls.append((call.address, 100_000_000, call_data))  # target, gasLimit, callData
+            to_address = call.address if call.address != 0 else self.address
+            encoded_calls.append((to_address, 100_000_000, call_data))  # target, gasLimit, callData
 
         # build multicall transaction
         multicall_call = self.multicall.functions.multicallWithGasLimitation(
@@ -227,7 +227,7 @@ class MultiCall:
         previous_call_data = None
 
         for call, call_data in calls_with_calldata:
-            target = call.address
+            target = call.address if call.address != 0 else "0x0000000000000000000000000000000000000000"
 
             # Determine the flags
             flags = 0
