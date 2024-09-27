@@ -200,7 +200,7 @@ class MultiCall:
 
         encoded_calls = []
         for call, call_data in calls_with_calldata:
-            to_address = call.address if call.address != 0 else self.address
+            to_address = call.address if call.address != 0 else self.undeployed_contract_address
             encoded_calls.append((to_address, 100_000_000, call_data))  # target, gasLimit, callData
 
         # build multicall transaction
