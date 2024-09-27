@@ -7,6 +7,7 @@ from web3.middleware import geth_poa_middleware
 
 from .EthAdvanced import EthAdvanced
 from .Multicall import MultiCall
+from .Web3ErrorHandlerPatch import patch_error_formatters
 
 
 class Web3Advanced(Web3):
@@ -34,6 +35,7 @@ class Web3Advanced(Web3):
             node_url: str,
             should_retry=True,
     ):
+        patch_error_formatters()
         self.node_url = node_url
         self.should_retry = should_retry
 
