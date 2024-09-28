@@ -119,9 +119,8 @@ def raise_contract_logic_error_on_revert(response: RPCResponse) -> RPCResponse:
         # Geth Revert with error message and code 3 case:
         if error.get("code") == 3:
             raise ContractLogicError(message, data=data)
-        # Geth Revert without error message case:
-        elif "execution reverted" in message:
-            raise ContractLogicError("execution reverted", data=data)
+        elif "revert" in message.lower():
+            raise ContractLogicError(message, data=data)
 
     return response
 
