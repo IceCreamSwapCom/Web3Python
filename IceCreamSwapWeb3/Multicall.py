@@ -91,6 +91,8 @@ class MultiCall:
             calls_with_calldata: list[tuple[ContractFunction, bytes]],
             batch_size: int
     ) -> tuple[list[Exception | tuple[any, ...]], list[int]]:
+        if len(calls_with_calldata) == 0:
+            return [], []
         kwargs = dict(
             use_revert=use_revert,
             batch_size=batch_size,
