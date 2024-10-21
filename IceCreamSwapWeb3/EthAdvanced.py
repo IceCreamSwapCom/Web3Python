@@ -1,9 +1,10 @@
 from time import sleep
 from typing import Optional
 
+from eth_typing import BlockNumber
 from web3.eth import Eth
 from web3.exceptions import ContractLogicError
-from web3.types import FilterParams, LogReceipt, CallOverride, BlockIdentifier, TxParams
+from web3.types import FilterParams, LogReceipt, CallOverride, BlockIdentifier, TxParams, BlockData
 
 from IceCreamSwapWeb3 import Web3Advanced
 
@@ -41,7 +42,7 @@ class EthAdvanced(Eth):
     METHODS_TO_RETRY = [
         'fee_history', 'create_access_list', 'estimate_gas',
         'get_transaction', 'get_raw_transaction', 'get_raw_transaction_by_block',
-        'send_transaction', 'send_raw_transaction', 'get_block', 'get_balance',
+        'send_transaction', 'send_raw_transaction', 'get_balance',
         'get_code', 'get_transaction_count', 'get_transaction_receipt',
         'wait_for_transaction_receipt', 'get_storage_at', 'replace_transaction',
         'modify_transaction', 'sign', 'sign_transaction', 'sign_typed_data', 'filter',
@@ -93,6 +94,29 @@ class EthAdvanced(Eth):
             ccip_read_enabled=ccip_read_enabled,
             no_retry=no_retry,
         )
+
+    def get_block_number(self, no_retry: bool = False, ignore_latest_seen_block: bool = False) -> BlockNumber:
+        block_number: BlockNumber = exponential_retry(func_name="get_block_number")(super().get_block_number)(
+            no_retry=no_retry or not self.w3.should_retry,
+        )
+        if not ignore_latest_seen_block and self.w3.latest_seen_block < block_number:
+            self.w3.latest_seen_block = block_number
+        return block_number
+
+    def get_block(
+            self,
+            block_identifier: BlockIdentifier,
+            full_transactions: bool = False,
+            no_retry: bool = False
+    ) -> BlockData:
+        block: BlockData = exponential_retry(func_name="get_block")(super().get_block)(
+            block_identifier=block_identifier,
+            full_transactions=full_transactions,
+            no_retry=no_retry or not self.w3.should_retry,
+        )
+        if self.w3.latest_seen_block < block["number"]:
+            self.w3.latest_seen_block = block["number"]
+        return block
 
     def get_logs(
             self,

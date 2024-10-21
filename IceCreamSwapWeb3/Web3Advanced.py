@@ -1,5 +1,6 @@
 from importlib.resources import files
 
+from eth_utils import to_checksum_address
 from web3 import Web3
 from web3.exceptions import ContractLogicError
 from web3.main import get_default_modules
@@ -49,6 +50,8 @@ class Web3Advanced(Web3):
 
         self.middleware_onion.inject(geth_poa_middleware, layer=0, name="poa")  # required for pos chains
 
+        self.latest_seen_block = self.eth.get_block_number(ignore_latest_seen_block=True)
+
         self.filter_block_range = self._find_max_filter_range()
         self.revert_reason_available: bool = self._check_revert_reason_available()
         if not self.revert_reason_available:
@@ -75,7 +78,7 @@ class Web3Advanced(Web3):
                 # getting logs from the 0 address as it does not emit any logs.
                 # This way we can test the maximum allowed filter range without getting back a ton of logs
                 result = self.eth._get_logs({
-                    "address": "0x0000000000000000000000000000000000000000",
+                    "address": to_checksum_address("0x0000000000000000000000000000000000000000"),
                     "fromBlock": current_block - 5 - filter_range + 1,
                     "toBlock": current_block - 5,
                 })
