@@ -34,11 +34,13 @@ class Web3Advanced(Web3):
     def __init__(
             self,
             node_url: str,
-            should_retry=True,
+            should_retry: bool = True,
+            unstable_blocks: int = 2,  # not all nodes might have latest n blocks, these are seen as unstable
     ):
         patch_error_formatters()
         self.node_url = node_url
         self.should_retry = should_retry
+        self.unstable_blocks = unstable_blocks
 
         provider = self._construct_provider(node_url=self.node_url)
 
