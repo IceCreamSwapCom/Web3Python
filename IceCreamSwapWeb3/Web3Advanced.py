@@ -1,3 +1,4 @@
+import os
 from importlib.resources import files
 
 from eth_utils import to_checksum_address
@@ -35,7 +36,7 @@ class Web3Advanced(Web3):
             self,
             node_url: str,
             should_retry: bool = True,
-            unstable_blocks: int = 2,  # not all nodes might have latest n blocks, these are seen as unstable
+            unstable_blocks: int = int(os.getenv("UNSTABLE_BLOCKS", 3)),  # not all nodes might have latest n blocks, these are seen as unstable
     ):
         patch_error_formatters()
         self.node_url = node_url
