@@ -81,11 +81,11 @@ class EthAdvanced(Eth):
             ccip_read_enabled: Optional[bool] = None,
             no_retry: bool = False,
     ):
-        if not self.w3.should_retry:
-            no_retry = True
-        elif "no_retry" in transaction:
+        if "no_retry" in transaction:
             no_retry = transaction["no_retry"]
             del transaction["no_retry"]
+        if not self.w3.should_retry:
+            no_retry = True
 
         return exponential_retry(func_name="call")(super().call)(
             transaction=transaction,
