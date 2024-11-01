@@ -7,6 +7,7 @@ from web3.exceptions import ContractLogicError
 from web3.types import FilterParams, LogReceipt, CallOverride, BlockIdentifier, TxParams, BlockData
 
 from IceCreamSwapWeb3 import Web3Advanced
+from IceCreamSwapWeb3.Subsquid import get_filter
 
 
 def exponential_retry(func_name: str = None):
@@ -123,7 +124,8 @@ class EthAdvanced(Eth):
             filter_params: FilterParams,
             show_progress_bar: bool = False,
             p_bar=None,
-            no_retry: bool = False
+            no_retry: bool = False,
+            use_subsquid: bool = True,
     ) -> list[LogReceipt]:
         filter_block_range = self.w3.filter_block_range
         if filter_block_range == 0:
@@ -135,8 +137,8 @@ class EthAdvanced(Eth):
             return self.get_logs_inner(filter_params, no_retry=no_retry)
 
         # sanitizing block numbers, could be strings like "latest"
-        filter_params["fromBlock"] = from_block = self.get_block_number_from_identifier(filter_params["fromBlock"])
-        filter_params["toBlock"] = to_block = self.get_block_number_from_identifier(filter_params["toBlock"])
+        filter_params["fromBlock"] = from_block = self.get_block_number_from_identifier(filter_params.get("fromBlock", "earliest"))
+        filter_params["toBlock"] = to_block = self.get_block_number_from_identifier(filter_params.get("toBlock", "latest"))
         assert to_block >= from_block, f"{from_block=}, {to_block=}"
 
         # note: fromBlock and toBlock are both inclusive. e.g. 5 to 6 are 2 blocks
@@ -152,6 +154,7 @@ class EthAdvanced(Eth):
             show_progress_bar=show_progress_bar,
             p_bar=p_bar,
             no_retry=no_retry,
+            use_subsquid=use_subsquid,
         )
 
         # the latest blocks might be available on some nodes but not at others.
@@ -176,6 +179,21 @@ class EthAdvanced(Eth):
         # getting logs for a single block, which is not at the chain head. No drama
         if num_blocks == 1:
             return self.get_logs_inner(filter_params, no_retry=no_retry)
+
+        if use_subsquid and from_block < self.w3.latest_seen_block - 100:
+            kwargs["use_subsquid"] = False  # make sure we only try once with Subsquid
+            try:
+                # trying to get logs from SubSquid
+                till_block, results = get_filter(
+                    chain_id=self.chain_id,
+                    filter_params=filter_params,
+                    partial_allowed=True,
+                )
+                if till_block >= to_block:
+                    return results
+                return results + self.get_logs({**filter_params, "fromBlock": till_block+1}, **kwargs)
+            except Exception as e:
+                print(f"Getting logs from SubSquid threw exception {repr(e)}, falling back to RPC")
 
         # if we already know that the filter range is too large, split it
         if num_blocks > filter_block_range:
