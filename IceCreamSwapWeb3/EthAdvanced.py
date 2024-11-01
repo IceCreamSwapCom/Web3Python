@@ -188,6 +188,7 @@ class EthAdvanced(Eth):
                     chain_id=self.chain_id,
                     filter_params=filter_params,
                     partial_allowed=True,
+                    p_bar=p_bar,
                 )
                 if till_block >= to_block:
                     return results

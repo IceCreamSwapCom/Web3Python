@@ -1,6 +1,7 @@
 import requests
 from eth_utils import to_checksum_address
 from hexbytes import HexBytes
+from tqdm import tqdm
 from web3.types import FilterParams, LogReceipt
 
 ENDPOINTS = {
@@ -113,7 +114,8 @@ def get_text(url: str) -> str:
 def get_filter(
         chain_id: int,
         filter_params: FilterParams,
-        partial_allowed=False
+        partial_allowed=False,
+        p_bar: tqdm = None
 ) -> tuple[int, list[LogReceipt]]:
     if chain_id not in ENDPOINTS:
         raise ValueError(f"Subsquid does not support Chain ID {chain_id}")
@@ -176,6 +178,8 @@ def get_filter(
         blocks = res.json()
 
         last_processed_block = blocks[-1]['header']['number']
+        if p_bar is not None:
+            p_bar.update(last_processed_block-from_block+1)
         from_block = last_processed_block + 1
 
         for block in blocks:
