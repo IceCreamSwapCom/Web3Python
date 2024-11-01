@@ -160,11 +160,10 @@ def get_filter(
             topic: str | list[str]
             if isinstance(topics[i], str):
                 topic = [topics[i]]
+            elif hasattr(topics[i], "hex"):
+                topic = [topics[i].hex()]
             else:
-                try:
-                    topic = [single_topic.hex() for single_topic in topics[i]]
-                except Exception:
-                    topic = [topics[i].hex()]
+                topic = [(single_topic.hex() if not isinstance(single_topic, str) else single_topic) for single_topic in topics[i]]
             query["logs"][0][f"topic{i}"] = topic
 
     logs: list[LogReceipt] = []
