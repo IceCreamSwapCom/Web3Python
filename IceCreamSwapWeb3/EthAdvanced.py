@@ -136,10 +136,35 @@ class EthAdvanced(Eth):
             assert "fromBlock" not in filter_params and "toBlock" not in filter_params
             return self.get_logs_inner(filter_params, no_retry=no_retry)
 
+        from_block_original: BlockIdentifier = filter_params.get("fromBlock", "earliest")
+        to_block_original: BlockIdentifier = filter_params.get("toBlock", "latest")
+
         # sanitizing block numbers, could be strings like "latest"
-        filter_params["fromBlock"] = from_block = self.get_block_number_from_identifier(filter_params.get("fromBlock", "earliest"))
-        filter_params["toBlock"] = to_block = self.get_block_number_from_identifier(filter_params.get("toBlock", "latest"))
+        if isinstance(from_block_original, int):
+            from_block_body = None
+            from_block = from_block_original
+        else:
+            from_block_body = self.get_block(from_block_original)
+            from_block = from_block_body["number"]
+            filter_params = {**filter_params, "fromBlock": from_block}
+
+        if isinstance(to_block_original, int):
+            to_block_body = None
+            to_block = to_block_original
+        else:
+            to_block_body = self.get_block(to_block_original)
+            to_block = to_block_body["number"]
+            filter_params = {**filter_params, "toBlock": to_block}
+
         assert to_block >= from_block, f"{from_block=}, {to_block=}"
+
+        # if logs for a single block are queried, and we know the block hash, query by it
+        if from_block == to_block and (from_block_body or to_block_body):
+            block_body = from_block_body if from_block_body else to_block_body
+            single_hash_filter = {**filter_params, "blockHash": block_body["hash"]}
+            del single_hash_filter["fromBlock"]
+            del single_hash_filter["toBlock"]
+            return self.get_logs_inner(single_hash_filter, no_retry=no_retry)
 
         # note: fromBlock and toBlock are both inclusive. e.g. 5 to 6 are 2 blocks
         num_blocks = to_block - from_block + 1
@@ -162,18 +187,31 @@ class EthAdvanced(Eth):
         # simply ignores logs from the missing block
         # to prevent this, we get the latest blocks individually by their hashes
         unstable_blocks = self.w3.unstable_blocks
-        if to_block > self.w3.latest_seen_block - unstable_blocks and to_block > self.block_number - unstable_blocks:
+        if to_block > self.w3.latest_seen_block - unstable_blocks and to_block > (last_stable_block := (self.get_block_number() - unstable_blocks)):
             results = []
-            while to_block > self.w3.latest_seen_block - unstable_blocks and to_block >= from_block:
-                single_hash_filter = {**filter_params, "blockHash": self.get_block(to_block)["hash"]}
-                del single_hash_filter["fromBlock"]
-                del single_hash_filter["toBlock"]
-                results += self.get_logs_inner(single_hash_filter, no_retry=no_retry)
-                to_block -= 1
+            if from_block <= last_stable_block:
+                results += self.get_logs({**filter_params, "toBlock": last_stable_block}, **kwargs)
+
+            # get all block hashes and ensure they build upon each other
+            block_hashes = []
+            for block_number in range(max(last_stable_block + 1, from_block), to_block + 1):
+                block = self.get_block(block_number, no_retry=no_retry)
+                if block_hashes:
+                    # make sure chain of blocks is consistent with each block building on the previous one
+                    assert block["parentHash"] == block_hashes[-1], f"{block_hashes[-1]=}, {block['parentHash']=}"
+                if block_number == from_block and from_block_body is not None:
+                    assert block["hash"] == from_block_body["hash"], f"{from_block_body['hash']=}, {block['hash']=}"
+                if block_number == to_block and to_block_body is not None:
+                    assert block["hash"] == to_block_body["hash"], f"{to_block_body['hash']=}, {block['hash']=}"
+                block_hashes.append(block["hash"])
+
+            single_hash_filter = filter_params.copy()
+            del single_hash_filter["fromBlock"]
+            del single_hash_filter["toBlock"]
+            for block_hash in block_hashes:
+                results += self.get_logs_inner({**single_hash_filter, "blockHash": block_hash}, no_retry=no_retry)
                 if p_bar is not None:
                     p_bar.update(1)
-            if to_block >= from_block:
-                results += self.get_logs({**filter_params, "toBlock": to_block}, **kwargs)
             return results
 
         # getting logs for a single block, which is not at the chain head. No drama
@@ -192,7 +230,7 @@ class EthAdvanced(Eth):
                 )
                 if till_block >= to_block:
                     return results
-                return results + self.get_logs({**filter_params, "fromBlock": till_block+1}, **kwargs)
+                return results + self.get_logs({**filter_params, "fromBlock": till_block + 1}, **kwargs)
             except Exception as e:
                 print(f"Getting logs from SubSquid threw exception {repr(e)}, falling back to RPC")
 
