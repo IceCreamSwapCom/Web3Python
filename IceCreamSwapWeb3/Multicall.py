@@ -121,10 +121,12 @@ class MultiCall:
             multicall_call = self._build_calldata(
                 calls_with_calldata=calls_with_calldata
             )
+            use_revert = False
 
         try:
             raw_returns, gas_usages = self._call_multicall(
                 multicall_call=multicall_call,
+                use_revert=use_revert,
                 retry=False
             )
         except Exception as e:
@@ -132,7 +134,8 @@ class MultiCall:
                 try:
                     raw_returns, gas_usages = self._call_multicall(
                         multicall_call=multicall_call,
-                        retry=len(calls_with_calldata) == 1
+                        use_revert=use_revert,
+                        retry=True
                     )
                 except Exception as e:
                     raw_returns = [e]
@@ -332,7 +335,12 @@ class MultiCall:
             except Exception:
                 return revert_bytes
 
-    def _call_multicall(self, multicall_call: ContractConstructor | ContractFunction, retry: bool = False):
+    def _call_multicall(
+            self,
+            multicall_call: ContractConstructor | ContractFunction,
+            use_revert: bool,
+            retry: bool = False
+    ):
         # call transaction
         try:
             if isinstance(multicall_call, ContractConstructor):
@@ -369,7 +377,11 @@ class MultiCall:
                     assert success, "Undeployed contract constructor reverted"
                     assert "0x" + address_encoded[-20:].hex() == self.undeployed_contract_address.lower(), "unexpected undeployed contract address"
                     multicall_result = multicall_result[1:]
+            if use_revert:
+                raise ValueError("Multicall did not revert but was expected to")
         except ContractLogicError as e:
+            if not use_revert:
+                raise
             if not e.message.startswith("execution reverted: "):
                 raise
             result_str = e.message.removeprefix("execution reverted: ")
