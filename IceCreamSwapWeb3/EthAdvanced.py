@@ -1,13 +1,26 @@
 from time import sleep
-from typing import Optional
+from typing import Optional, TypedDict, Sequence
 
-from eth_typing import BlockNumber
+from eth_typing import BlockNumber, Address, ChecksumAddress
+from hexbytes import HexBytes
 from web3.eth import Eth
 from web3.exceptions import ContractLogicError
-from web3.types import FilterParams, LogReceipt, CallOverride, BlockIdentifier, TxParams, BlockData
+from web3.types import FilterParams, LogReceipt, CallOverride, BlockIdentifier, TxParams, BlockData, _Hash32
 
 from IceCreamSwapWeb3 import Web3Advanced
 from IceCreamSwapWeb3.Subsquid import get_filter
+
+
+class ForkedBlock(Exception):
+    pass
+
+
+class FilterParamsExtended(TypedDict, total=False):
+    address: Address | ChecksumAddress | list[Address] | list[ChecksumAddress]
+    blockHash: HexBytes
+    fromBlock: BlockIdentifier | BlockData
+    toBlock: BlockIdentifier | BlockData
+    topics: Sequence[_Hash32 | Sequence[_Hash32] | None]
 
 
 def exponential_retry(func_name: str = None):
@@ -121,7 +134,7 @@ class EthAdvanced(Eth):
 
     def get_logs(
             self,
-            filter_params: FilterParams,
+            filter_params: FilterParamsExtended,
             show_progress_bar: bool = False,
             p_bar=None,
             no_retry: bool = False,
@@ -143,6 +156,10 @@ class EthAdvanced(Eth):
         if isinstance(from_block_original, int):
             from_block_body = None
             from_block = from_block_original
+        elif isinstance(from_block_original, BlockData):
+            from_block_body = from_block_original
+            from_block = from_block_original["number"]
+            filter_params = {**filter_params, "fromBlock": from_block}
         else:
             from_block_body = self.get_block(from_block_original)
             from_block = from_block_body["number"]
@@ -151,6 +168,10 @@ class EthAdvanced(Eth):
         if isinstance(to_block_original, int):
             to_block_body = None
             to_block = to_block_original
+        elif isinstance(to_block_original, BlockData):
+            to_block_body = to_block_original
+            to_block = to_block_original["number"]
+            filter_params = {**filter_params, "toBlock": to_block}
         else:
             to_block_body = self.get_block(to_block_original)
             to_block = to_block_body["number"]
@@ -198,11 +219,13 @@ class EthAdvanced(Eth):
                 block = self.get_block(block_number, no_retry=no_retry)
                 if block_hashes:
                     # make sure chain of blocks is consistent with each block building on the previous one
-                    assert block["parentHash"] == block_hashes[-1], f"{block_hashes[-1]=}, {block['parentHash']=}"
+                    assert block["parentHash"] == block_hashes[-1], f"{block_hashes[-1].hex()=}, {block['parentHash'].hex()=}"
                 if block_number == from_block and from_block_body is not None:
-                    assert block["hash"] == from_block_body["hash"], f"{from_block_body['hash']=}, {block['hash']=}"
+                    if block["hash"] != from_block_body["hash"]:
+                        raise ForkedBlock(f"expected={from_block_body['hash'].hex()}, actual={block['hash'].hex()}")
                 if block_number == to_block and to_block_body is not None:
-                    assert block["hash"] == to_block_body["hash"], f"{to_block_body['hash']=}, {block['hash']=}"
+                    if block["hash"] != to_block_body["hash"]:
+                        raise ForkedBlock(f"expected={to_block_body['hash'].hex()}, actual={block['hash'].hex()}")
                 block_hashes.append(block["hash"])
 
             single_hash_filter = filter_params.copy()
