@@ -3,6 +3,7 @@ from typing import Optional, TypedDict, Sequence
 
 from eth_typing import BlockNumber, Address, ChecksumAddress
 from hexbytes import HexBytes
+from web3.datastructures import AttributeDict
 from web3.eth import Eth
 from web3.exceptions import ContractLogicError
 from web3.types import FilterParams, LogReceipt, CallOverride, BlockIdentifier, TxParams, BlockData, _Hash32
@@ -156,7 +157,7 @@ class EthAdvanced(Eth):
         if isinstance(from_block_original, int):
             from_block_body = None
             from_block = from_block_original
-        elif isinstance(from_block_original, BlockData):
+        elif isinstance(from_block_original, AttributeDict) or isinstance(from_block_original, dict):
             from_block_body = from_block_original
             from_block = from_block_original["number"]
             filter_params = {**filter_params, "fromBlock": from_block}
@@ -168,7 +169,7 @@ class EthAdvanced(Eth):
         if isinstance(to_block_original, int):
             to_block_body = None
             to_block = to_block_original
-        elif isinstance(to_block_original, BlockData):
+        elif isinstance(to_block_original, AttributeDict) or isinstance(to_block_original, dict):
             to_block_body = to_block_original
             to_block = to_block_original["number"]
             filter_params = {**filter_params, "toBlock": to_block}
