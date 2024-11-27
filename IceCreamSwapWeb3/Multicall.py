@@ -6,7 +6,7 @@ import eth_abi
 import eth_utils
 import rlp
 from eth_utils import to_checksum_address, to_bytes
-from web3._utils.abi import get_abi_output_types, get_abi_input_types
+from eth_utils.abi import get_abi_output_types, get_abi_input_types
 from web3.contract.contract import ContractFunction, ContractConstructor
 from web3.exceptions import ContractLogicError
 
@@ -45,7 +45,7 @@ class MultiCall:
             self,
             w3: Web3Advanced
     ):
-        self.w3 = copy.deepcopy(w3)
+        self.w3 = w3
         self.chain_id = self.w3.eth.chain_id
 
         if self.chain_id in self.MULTICALL_DEPLOYMENTS:

@@ -6,7 +6,7 @@ from hexbytes import HexBytes
 from web3.datastructures import AttributeDict
 from web3.eth import Eth
 from web3.exceptions import ContractLogicError
-from web3.types import FilterParams, LogReceipt, CallOverride, BlockIdentifier, TxParams, BlockData, _Hash32
+from web3.types import FilterParams, LogReceipt, StateOverride, BlockIdentifier, TxParams, BlockData, _Hash32
 
 from IceCreamSwapWeb3 import Web3Advanced
 from IceCreamSwapWeb3.Subsquid import get_filter
@@ -61,13 +61,12 @@ class EthAdvanced(Eth):
         'get_code', 'get_transaction_count', 'get_transaction_receipt',
         'wait_for_transaction_receipt', 'get_storage_at', 'replace_transaction',
         'modify_transaction', 'sign', 'sign_transaction', 'sign_typed_data', 'filter',
-        'get_filter_changes', 'get_filter_logs', 'uninstall_filter', 'submit_hashrate',
-        'get_work', 'submit_work',
+        'get_filter_changes', 'get_filter_logs', 'uninstall_filter'
     ]
 
     PROPERTIES_TO_RETRY = [
-        'accounts', 'hashrate', 'block_number', 'coinbase', 'gas_price',
-        'max_priority_fee', 'mining', 'syncing'
+        'accounts', 'block_number', 'gas_price',
+        'max_priority_fee', 'syncing'
     ]
 
     def __init__(self, w3):
@@ -92,7 +91,7 @@ class EthAdvanced(Eth):
             self,
             transaction: TxParams,
             block_identifier: Optional[BlockIdentifier] = None,
-            state_override: Optional[CallOverride] = None,
+            state_override: Optional[StateOverride] = None,
             ccip_read_enabled: Optional[bool] = None,
             no_retry: bool = False,
     ):
@@ -286,9 +285,6 @@ class EthAdvanced(Eth):
         if not self.w3.should_retry:
             no_retry = True
         return exponential_retry(func_name="get_logs")(self._get_logs)(filter_params, no_retry=no_retry)
-
-    def get_block_number_from_identifier(self, block_identifier: BlockIdentifier) -> BlockNumber:
-        return block_identifier if isinstance(block_identifier, int) else self.get_block(block_identifier)["number"]
 
     def _chain_id(self):
         # usually this causes an RPC call and is used in every eth_call. Getting it once in the init and then not again.

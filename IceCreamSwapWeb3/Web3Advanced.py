@@ -5,7 +5,7 @@ from eth_utils import to_checksum_address
 from web3 import Web3
 from web3.exceptions import ContractLogicError
 from web3.main import get_default_modules
-from web3.middleware import geth_poa_middleware
+from web3.middleware import ExtraDataToPOAMiddleware
 
 from .EthAdvanced import EthAdvanced
 from .Multicall import MultiCall
@@ -51,7 +51,7 @@ class Web3Advanced(Web3):
 
         super().__init__(provider=provider, modules=modules)
 
-        self.middleware_onion.inject(geth_poa_middleware, layer=0, name="poa")  # required for pos chains
+        self.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0, name="poa")  # required for pos chains
 
         self.latest_seen_block = self.eth.get_block_number(ignore_latest_seen_block=True)
 
