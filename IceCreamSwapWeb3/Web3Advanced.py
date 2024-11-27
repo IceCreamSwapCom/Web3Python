@@ -38,7 +38,7 @@ class Web3Advanced(Web3):
             node_url: str,
             should_retry: bool = True,
             unstable_blocks: int = int(os.getenv("UNSTABLE_BLOCKS", 5)),  # not all nodes might have latest n blocks, these are seen as unstable
-            rpc_batch_max_size: int = int(os.getenv("RPC_BATCH_MAX_SIZE", 500)),  # split batch requests up if they are larger
+            rpc_batch_max_size: int = int(os.getenv("RPC_BATCH_MAX_SIZE", 1000)),  # split batch requests up if they are larger
     ):
         patch_error_formatters()
         self.node_url = node_url
