@@ -7,6 +7,7 @@ from web3.exceptions import ContractLogicError
 from web3.main import get_default_modules
 from web3.middleware import ExtraDataToPOAMiddleware
 
+from .BatchRetryMiddleware import BatchRetryMiddleware
 from .EthAdvanced import EthAdvanced
 from .Multicall import MultiCall
 from .Web3ErrorHandlerPatch import patch_error_formatters
@@ -37,11 +38,13 @@ class Web3Advanced(Web3):
             node_url: str,
             should_retry: bool = True,
             unstable_blocks: int = int(os.getenv("UNSTABLE_BLOCKS", 5)),  # not all nodes might have latest n blocks, these are seen as unstable
+            rpc_batch_max_size: int = int(os.getenv("RPC_BATCH_MAX_SIZE", 500)),  # split batch requests up if they are larger
     ):
         patch_error_formatters()
         self.node_url = node_url
         self.should_retry = should_retry
         self.unstable_blocks = unstable_blocks
+        self.rpc_batch_max_size = rpc_batch_max_size
 
         provider = self._construct_provider(node_url=self.node_url)
 
@@ -51,6 +54,7 @@ class Web3Advanced(Web3):
 
         super().__init__(provider=provider, modules=modules)
 
+        self.middleware_onion.inject(BatchRetryMiddleware, layer=0, name="batch_retry")  # split and retry batch requests
         self.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0, name="poa")  # required for pos chains
 
         self.latest_seen_block = self.eth.get_block_number(ignore_latest_seen_block=True)
