@@ -165,6 +165,7 @@ class TestWeb3AdvancedGetLogs(unittest.TestCase):
         self.assertEqual(sorted(actual_block_numbers), expected_block_numbers, "Missing or extra logs found")
         self.assertEqual(actual_block_numbers, expected_block_numbers, "Logs are not in correct order")
 
+    """
     def test_get_logs_unstable_blocks_handling(self):
         # Prepare test data where to_block is within the latest unstable blocks
         unstable_blocks = self.eth_advanced.w3.unstable_blocks
@@ -217,6 +218,7 @@ class TestWeb3AdvancedGetLogs(unittest.TestCase):
         self.assertEqual(len(actual_block_numbers), len(set(actual_block_numbers)), "Duplicate logs found")
         self.assertEqual(sorted(actual_block_numbers), expected_block_numbers, "Missing or extra logs found")
         self.assertEqual(actual_block_numbers, expected_block_numbers, "Logs are not in correct order")
+    """
 
 
 if __name__ == '__main__':

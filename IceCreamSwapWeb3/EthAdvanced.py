@@ -139,6 +139,7 @@ class EthAdvanced(Eth):
             p_bar=None,
             no_retry: bool = False,
             use_subsquid: bool = True,
+            get_logs_by_block_hash: bool = False
     ) -> list[LogReceipt]:
         filter_block_range = self.w3.filter_block_range
         if filter_block_range == 0:
@@ -149,33 +150,9 @@ class EthAdvanced(Eth):
             assert "fromBlock" not in filter_params and "toBlock" not in filter_params
             return self.get_logs_inner(filter_params, no_retry=no_retry)
 
-        from_block_original: BlockIdentifier = filter_params.get("fromBlock", "earliest")
-        to_block_original: BlockIdentifier = filter_params.get("toBlock", "latest")
-
-        # sanitizing block numbers, could be strings like "latest"
-        if isinstance(from_block_original, int):
-            from_block_body = None
-            from_block = from_block_original
-        elif isinstance(from_block_original, AttributeDict) or isinstance(from_block_original, dict):
-            from_block_body = from_block_original
-            from_block = from_block_original["number"]
-            filter_params = {**filter_params, "fromBlock": from_block}
-        else:
-            from_block_body = self.get_block(from_block_original)
-            from_block = from_block_body["number"]
-            filter_params = {**filter_params, "fromBlock": from_block}
-
-        if isinstance(to_block_original, int):
-            to_block_body = None
-            to_block = to_block_original
-        elif isinstance(to_block_original, AttributeDict) or isinstance(to_block_original, dict):
-            to_block_body = to_block_original
-            to_block = to_block_original["number"]
-            filter_params = {**filter_params, "toBlock": to_block}
-        else:
-            to_block_body = self.get_block(to_block_original)
-            to_block = to_block_body["number"]
-            filter_params = {**filter_params, "toBlock": to_block}
+        from_block, from_block_body = self.sanitize_block(filter_params.get("fromBlock", "latest"))
+        to_block, to_block_body = self.sanitize_block(filter_params.get("toBlock", "latest"))
+        filter_params = {**filter_params, "fromBlock": from_block, "toBlock": to_block}
 
         assert to_block >= from_block, f"{from_block=}, {to_block=}"
 
@@ -203,51 +180,13 @@ class EthAdvanced(Eth):
             use_subsquid=use_subsquid,
         )
 
-        # the latest blocks might be available on some nodes but not at others.
-        # setting toBlock to a block bigger than the latest known block of the node
-        # simply ignores logs from the missing block
-        # to prevent this, we get the latest blocks individually by their hashes
-        unstable_blocks = self.w3.unstable_blocks
-        if to_block > self.w3.latest_seen_block - unstable_blocks and to_block > (last_stable_block := (self.get_block_number() - unstable_blocks)):
-            results = []
-            if from_block <= last_stable_block:
-                results += self.get_logs({**filter_params, "toBlock": last_stable_block}, **kwargs)
-
-            # get all block hashes and ensure they build upon each other
-            block_hashes = []
-            for block_number in range(max(last_stable_block + 1, from_block), to_block + 1):
-                block = self.get_block(block_number, no_retry=no_retry)
-                if block_hashes:
-                    # make sure chain of blocks is consistent with each block building on the previous one
-                    assert block["parentHash"] == block_hashes[-1], f"{block_hashes[-1].hex()=}, {block['parentHash'].hex()=}"
-                if block_number == from_block and from_block_body is not None:
-                    if block["hash"] != from_block_body["hash"]:
-                        raise ForkedBlock(f"expected={from_block_body['hash'].hex()}, actual={block['hash'].hex()}")
-                if block_number == to_block and to_block_body is not None:
-                    if block["hash"] != to_block_body["hash"]:
-                        raise ForkedBlock(f"expected={to_block_body['hash'].hex()}, actual={block['hash'].hex()}")
-                block_hashes.append(block["hash"])
-
-            single_hash_filter = filter_params.copy()
-            del single_hash_filter["fromBlock"]
-            del single_hash_filter["toBlock"]
-            for block_hash in block_hashes:
-                results += self.get_logs_inner({**single_hash_filter, "blockHash": block_hash}, no_retry=no_retry)
-                if p_bar is not None:
-                    p_bar.update(1)
-            return results
-
-        # getting logs for a single block, which is not at the chain head. No drama
-        if num_blocks == 1:
-            return self.get_logs_inner(filter_params, no_retry=no_retry)
-
-        if use_subsquid and from_block < self.w3.latest_seen_block - 100:
+        if use_subsquid and from_block < self.w3.latest_seen_block - self.w3.unstable_blocks:
             kwargs["use_subsquid"] = False  # make sure we only try once with Subsquid
             try:
                 # trying to get logs from SubSquid
                 till_block, results = get_filter(
                     chain_id=self.chain_id,
-                    filter_params=filter_params,
+                    filter_params={**filter_params, "toBlock": min(to_block, self.w3.latest_seen_block - self.w3.unstable_blocks)},
                     partial_allowed=True,
                     p_bar=p_bar,
                 )
@@ -256,6 +195,47 @@ class EthAdvanced(Eth):
                 return results + self.get_logs({**filter_params, "fromBlock": till_block + 1}, **kwargs)
             except Exception as e:
                 print(f"Getting logs from SubSquid threw exception {repr(e)}, falling back to RPC")
+
+        if get_logs_by_block_hash or to_block > self.w3.latest_seen_block - self.w3.unstable_blocks:
+            # getting logs via from and to block range sometimes drops logs.
+            # This does not happen when getting them individually for each block by their block hash
+            # get all block hashes and ensure they build upon each other
+            with self.w3.batch_requests() as batch:
+                batch.add_mapping({
+                    self.w3.eth._get_block: list(range(from_block, to_block + 1))
+                })
+                blocks: list[BlockData] = batch.execute()
+            assert len(blocks) == num_blocks
+
+            # make sure chain of blocks is consistent with each block building on the previous one
+            for i, block_number in enumerate(range(from_block, to_block + 1)):
+                block = blocks[i]
+                if i != 0:
+                    assert block["parentHash"] == blocks[i-1]["hash"], f"{blocks[i-1]['hash'].hex()=}, {block['parentHash'].hex()=}"
+                if block_number == from_block and from_block_body is not None:
+                    if block["hash"] != from_block_body["hash"]:
+                        raise ForkedBlock(f"expected={from_block_body['hash'].hex()}, actual={block['hash'].hex()}")
+                if block_number == to_block and to_block_body is not None:
+                    if block["hash"] != to_block_body["hash"]:
+                        raise ForkedBlock(f"expected={to_block_body['hash'].hex()}, actual={block['hash'].hex()}")
+
+            single_hash_filter = filter_params.copy()
+            del single_hash_filter["fromBlock"]
+            del single_hash_filter["toBlock"]
+            with self.w3.batch_requests() as batch:
+                batch.add_mapping({
+                    self.w3.eth._get_logs: [{**single_hash_filter, "blockHash": block["hash"]} for block in blocks]
+                })
+                results_per_block: list[list[LogReceipt]] = batch.execute()
+            assert len(results_per_block) == num_blocks
+            if p_bar is not None:
+                p_bar.update(len(blocks))
+            results = sum(results_per_block, [])
+            return results
+
+        # getting logs for a single block, which is not at the chain head. No drama
+        if num_blocks == 1:
+            return self.get_logs_inner(filter_params, no_retry=no_retry)
 
         # if we already know that the filter range is too large, split it
         if num_blocks > filter_block_range:
@@ -268,7 +248,7 @@ class EthAdvanced(Eth):
                 }, **kwargs)
             return results
 
-        # get logs
+        # get logs and split on exception
         try:
             events = self._get_logs(filter_params)
             if p_bar is not None:
@@ -281,6 +261,19 @@ class EthAdvanced(Eth):
             right_filter = {**filter_params, "fromBlock": mid_block + 1}
             return self.get_logs(left_filter, **kwargs) + self.get_logs(right_filter, **kwargs)
 
+
+    def sanitize_block(self, block: BlockIdentifier | BlockData) -> tuple[int, BlockData | None]:
+        if isinstance(block, int):
+            block_body = None
+            block_number = block
+        elif isinstance(block, AttributeDict) or isinstance(block, dict):
+            block_body = block
+            block_number = block["number"]
+        else:
+            block_body = self.get_block(block)
+            block_number = block_body["number"]
+        return block_number, block_body
+
     def get_logs_inner(self, filter_params: FilterParams, no_retry: bool = False):
         if not self.w3.should_retry:
             no_retry = True
@@ -289,3 +282,25 @@ class EthAdvanced(Eth):
     def _chain_id(self):
         # usually this causes an RPC call and is used in every eth_call. Getting it once in the init and then not again.
         return self.chain_id_cached
+
+
+def main(
+        node_url="https://rpc-core.icecreamswap.com",
+        usdt_address="0x900101d06A7426441Ae63e9AB3B9b0F63Be145F1",
+):
+    from eth_utils import to_checksum_address
+
+    usdt_address = to_checksum_address(usdt_address)
+
+    w3 = Web3Advanced(node_url=node_url)
+
+    latest_block = w3.eth.block_number
+    logs = w3.eth.get_logs({
+        "address": usdt_address,
+        "fromBlock": latest_block - 10_000,
+        "toBlock": latest_block,
+    }, use_subsquid=False, get_logs_by_block_hash=True)
+    print(len(logs), logs[0])
+
+if __name__ == "__main__":
+    main()
