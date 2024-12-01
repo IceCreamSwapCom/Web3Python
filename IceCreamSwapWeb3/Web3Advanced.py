@@ -33,18 +33,30 @@ class Web3Advanced(Web3):
     ], reverse=True)
     assert FILTER_RANGES_TO_TRY[-1] == 1
 
+    BATCH_SIZES_TO_TRY = sorted([
+        1_000,
+        500,
+        200,
+        100,
+        50,
+        20,
+        10,
+        5,
+        2,
+        1
+    ], reverse=True)
+    assert BATCH_SIZES_TO_TRY[-1] == 1
+
     def __init__(
             self,
             node_url: str,
             should_retry: bool = True,
             unstable_blocks: int = int(os.getenv("UNSTABLE_BLOCKS", 5)),  # not all nodes might have latest n blocks, these are seen as unstable
-            rpc_batch_max_size: int = int(os.getenv("RPC_BATCH_MAX_SIZE", 1000)),  # split batch requests up if they are larger
     ):
         patch_error_formatters()
         self.node_url = node_url
         self.should_retry = should_retry
         self.unstable_blocks = unstable_blocks
-        self.rpc_batch_max_size = rpc_batch_max_size
 
         provider = self._construct_provider(node_url=self.node_url)
 
@@ -54,15 +66,17 @@ class Web3Advanced(Web3):
 
         super().__init__(provider=provider, modules=modules)
 
-        self.middleware_onion.inject(BatchRetryMiddleware, layer=0, name="batch_retry")  # split and retry batch requests
         self.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0, name="poa")  # required for pos chains
 
         self.latest_seen_block = self.eth.get_block_number(ignore_latest_seen_block=True)
 
         self.filter_block_range = self._find_max_filter_range()
+        self.rpc_batch_max_size = self._find_max_batch_size()
         self.revert_reason_available: bool = self._check_revert_reason_available()
         if not self.revert_reason_available:
             print(f"RPC {self.node_url} does not return revert reasons")
+
+        self.middleware_onion.inject(BatchRetryMiddleware, layer=0, name="batch_retry")  # split and retry batch requests
 
     @staticmethod
     def _construct_provider(node_url):
@@ -95,6 +109,19 @@ class Web3Advanced(Web3):
                 pass
         print(f"Can not use eth_getLogs with RPC {self.node_url}")
         return 0
+
+    def _find_max_batch_size(self):
+        for batch_size in self.BATCH_SIZES_TO_TRY:
+            try:
+                with self.batch_requests() as batch:
+                    for _ in range(batch_size):
+                        batch.add(self.eth._gas_price())
+                    result = batch.execute()
+                assert len(result) == batch_size
+                return batch_size
+            except Exception:
+                pass
+        raise
 
     def _check_revert_reason_available(self):
         with files("IceCreamSwapWeb3").joinpath("./abi/RevertTester.abi").open('r') as f:
