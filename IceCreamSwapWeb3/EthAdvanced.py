@@ -196,10 +196,20 @@ class EthAdvanced(Eth):
             except Exception as e:
                 print(f"Getting logs from SubSquid threw exception {repr(e)}, falling back to RPC")
 
-        if get_logs_by_block_hash or to_block > self.w3.latest_seen_block - self.w3.unstable_blocks:
+        last_stable_block = self.w3.latest_seen_block - self.w3.unstable_blocks
+        if get_logs_by_block_hash or to_block > last_stable_block:
             # getting logs via from and to block range sometimes drops logs.
             # This does not happen when getting them individually for each block by their block hash
             # get all block hashes and ensure they build upon each other
+
+            # if only unstable blocks need to be gathered by hash, gather stable blocks as log range
+            results: list[LogReceipt] = []
+            if not get_logs_by_block_hash and from_block < last_stable_block:
+                results += self.get_logs({**filter_params, "toBlock": last_stable_block}, **kwargs)
+                from_block = last_stable_block + 1
+                assert to_block >= from_block
+                num_blocks = to_block - from_block + 1
+
             with self.w3.batch_requests() as batch:
                 batch.add_mapping({
                     self.w3.eth._get_block: list(range(from_block, to_block + 1))
@@ -212,10 +222,10 @@ class EthAdvanced(Eth):
                 block = blocks[i]
                 if i != 0:
                     assert block["parentHash"] == blocks[i-1]["hash"], f"{blocks[i-1]['hash'].hex()=}, {block['parentHash'].hex()=}"
-                if block_number == from_block and from_block_body is not None:
+                if from_block_body is not None and from_block_body["number"] == block_number:
                     if block["hash"] != from_block_body["hash"]:
                         raise ForkedBlock(f"expected={from_block_body['hash'].hex()}, actual={block['hash'].hex()}")
-                if block_number == to_block and to_block_body is not None:
+                if to_block_body is not None and to_block_body["number"] == block_number:
                     if block["hash"] != to_block_body["hash"]:
                         raise ForkedBlock(f"expected={to_block_body['hash'].hex()}, actual={block['hash'].hex()}")
 
@@ -230,7 +240,7 @@ class EthAdvanced(Eth):
             assert len(results_per_block) == num_blocks
             if p_bar is not None:
                 p_bar.update(len(blocks))
-            results = sum(results_per_block, [])
+            results += sum(results_per_block, [])
             return results
 
         # getting logs for a single block, which is not at the chain head. No drama
