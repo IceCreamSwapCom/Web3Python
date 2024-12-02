@@ -15,7 +15,7 @@ class BatchRetryMiddleware(Web3Middleware):
                 # early return if batch to request is empty
                 return []
 
-            if len(requests_info) > self._w3.rpc_batch_max_size:
+            if len(requests_info) > self._w3.rpc_batch_max_size != 0:
                 response = []
                 for start in range(0, len(requests_info), self._w3.rpc_batch_max_size):
                     response += middleware(requests_info[start:start + self._w3.rpc_batch_max_size])
