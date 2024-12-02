@@ -92,7 +92,7 @@ class Web3Advanced(Web3):
     def start_multicall(self) -> MultiCall:
         return MultiCall(w3=self)
 
-    def _find_max_filter_range(self):
+    def _find_max_filter_range(self) -> int:
         current_block = self.eth.block_number
         for filter_range in self.FILTER_RANGES_TO_TRY:
             try:
@@ -110,7 +110,7 @@ class Web3Advanced(Web3):
         print(f"Can not use eth_getLogs with RPC {self.node_url}")
         return 0
 
-    def _find_max_batch_size(self):
+    def _find_max_batch_size(self) -> int:
         for batch_size in self.BATCH_SIZES_TO_TRY:
             try:
                 with self.batch_requests() as batch:
@@ -121,7 +121,8 @@ class Web3Advanced(Web3):
                 return batch_size
             except Exception:
                 pass
-        raise
+        print(f"Can not use batch requests with RPC {self.node_url}")
+        return 0
 
     def _check_revert_reason_available(self):
         with files("IceCreamSwapWeb3").joinpath("./abi/RevertTester.abi").open('r') as f:

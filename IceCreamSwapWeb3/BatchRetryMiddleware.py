@@ -10,6 +10,10 @@ class BatchRetryMiddleware(Web3Middleware):
 
     def wrap_make_batch_request(self, make_batch_request):
         def middleware(requests_info) -> list:
+            if self._w3.rpc_batch_max_size == 0:
+                # RPC does not support batch requests at all, splitting batch into single, non batch, requests
+                return [make_batch_request.__self__.make_request(method, params) for method, params in requests_info]
+
             if len(requests_info) > self._w3.rpc_batch_max_size:
                 response = []
                 for start in range(0, len(requests_info), self._w3.rpc_batch_max_size):
