@@ -1,5 +1,6 @@
 import os
 from importlib.resources import files
+from time import sleep
 
 from eth_utils import to_checksum_address
 from web3 import Web3
@@ -106,7 +107,7 @@ class Web3Advanced(Web3):
                 assert result == []
                 return filter_range
             except Exception:
-                pass
+                sleep(0.1)
         print(f"Can not use eth_getLogs with RPC {self.node_url}")
         return 0
 
@@ -120,7 +121,7 @@ class Web3Advanced(Web3):
                 assert len(result) == batch_size
                 return batch_size
             except Exception:
-                pass
+                sleep(0.1)
         print(f"Can not use batch requests with RPC {self.node_url}")
         return 0
 
