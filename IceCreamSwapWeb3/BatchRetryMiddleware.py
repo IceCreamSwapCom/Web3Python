@@ -15,17 +15,6 @@ class BatchRetryMiddleware(Web3Middleware):
                 # early return if batch to request is empty
                 return []
 
-            if self._w3.rpc_batch_max_size == 0 or len(requests_info) == 1:
-                # if RPC does not support batch requests or single request in batch, make individual requests
-                return [
-                    exponential_retry(method)(make_batch_request.__self__.make_request)(
-                        method,
-                        params,
-                        no_retry=not self._w3.should_retry
-                    )
-                    for method, params in requests_info
-                ]
-
             if len(requests_info) > self._w3.rpc_batch_max_size:
                 response = []
                 for start in range(0, len(requests_info), self._w3.rpc_batch_max_size):
@@ -33,7 +22,18 @@ class BatchRetryMiddleware(Web3Middleware):
                 return response
 
             try:
-                response = make_batch_request(requests_info)
+                if self._w3.rpc_batch_max_size == 0 or len(requests_info) == 1:
+                    # if RPC does not support batch requests or single request in batch, make individual requests
+                    response = [
+                        exponential_retry(method)(make_batch_request.__self__.make_request)(
+                            method,
+                            params,
+                            no_retry=not self._w3.should_retry
+                        )
+                        for method, params in requests_info
+                    ]
+                else:
+                    response = make_batch_request(requests_info)
             except Exception as e:
                 assert len(requests_info) > 1
                 print(f"batch RPC call with {len(requests_info)} requests got exception {repr(e)}, splitting and retrying")
