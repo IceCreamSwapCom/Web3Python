@@ -112,18 +112,19 @@ class Web3Advanced(Web3):
         return 0
 
     def _find_max_batch_size(self) -> int:
-        for batch_size in self.BATCH_SIZES_TO_TRY:
-            try:
+        working_size = 0
+        try:
+            for batch_size in reversed(self.BATCH_SIZES_TO_TRY):
                 with self.batch_requests() as batch:
                     for _ in range(batch_size):
                         batch.add(self.eth._gas_price())
                     result = batch.execute()
                 assert len(result) == batch_size
-                return batch_size
-            except Exception:
+                working_size = batch_size
                 sleep(0.1)
-        print(f"Can not use batch requests with RPC {self.node_url}")
-        return 0
+        except Exception:
+            pass
+        return working_size
 
     def _check_revert_reason_available(self):
         with files("IceCreamSwapWeb3").joinpath("./abi/RevertTester.abi").open('r') as f:
