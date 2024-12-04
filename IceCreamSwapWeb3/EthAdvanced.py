@@ -221,13 +221,14 @@ class EthAdvanced(Eth):
             for i, block_number in enumerate(range(from_block, to_block + 1)):
                 block = blocks[i]
                 if i != 0:
-                    assert block["parentHash"] == blocks[i-1]["hash"], f"{blocks[i-1]['hash'].hex()=}, {block['parentHash'].hex()=}"
+                    if block["parentHash"] != blocks[i-1]["hash"]:
+                        raise ForkedBlock(f"expected={blocks[i-1]['hash'].to_0x_hex()}, actual={block['parentHash'].to_0x_hex()}")
                 if from_block_body is not None and from_block_body["number"] == block_number:
                     if block["hash"] != from_block_body["hash"]:
-                        raise ForkedBlock(f"expected={from_block_body['hash'].hex()}, actual={block['hash'].hex()}")
+                        raise ForkedBlock(f"expected={from_block_body['hash'].to_0x_hex()}, actual={block['hash'].to_0x_hex()}")
                 if to_block_body is not None and to_block_body["number"] == block_number:
                     if block["hash"] != to_block_body["hash"]:
-                        raise ForkedBlock(f"expected={to_block_body['hash'].hex()}, actual={block['hash'].hex()}")
+                        raise ForkedBlock(f"expected={to_block_body['hash'].to_0x_hex()}, actual={block['hash'].to_0x_hex()}")
 
             single_hash_filter = filter_params.copy()
             del single_hash_filter["fromBlock"]
