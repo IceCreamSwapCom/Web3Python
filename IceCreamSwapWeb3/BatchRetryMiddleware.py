@@ -43,7 +43,7 @@ class BatchRetryMiddleware(Web3Middleware):
                     requests_retry = []
                     request_indexes: list[tuple[int, int]] = []
                     for i, (request_single, response_single) in enumerate(zip(requests_info, response)):
-                        if "error" in response_single or response_single["result"] is None:
+                        if "error" in response_single or response_single.get("result") is None:
                             request_indexes.append((i, len(requests_retry)))
                             requests_retry.append(request_single)
 
