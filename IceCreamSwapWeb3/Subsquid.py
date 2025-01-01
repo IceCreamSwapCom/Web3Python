@@ -1,4 +1,7 @@
+from typing import cast
+
 import requests
+from IceCreamSwapWeb3 import to_checksum_address
 from eth_utils import to_checksum_address
 from hexbytes import HexBytes
 from tqdm import tqdm
@@ -103,10 +106,10 @@ def get_filter(
                     address=to_checksum_address(log['address']),
                     blockHash=block["header"]["hash"],
                     blockNumber=block["header"]["number"],
-                    data=HexBytes(log["data"]),
+                    data=cast(HexBytes, bytes.fromhex(log["data"][2:])),
                     logIndex=log["logIndex"],
-                    topics=[HexBytes(topic) for topic in log["topics"]],
-                    transactionHash=HexBytes(log["transactionHash"]),
+                    topics=[cast(HexBytes, bytes.fromhex(topic[2:])) for topic in log["topics"]],
+                    transactionHash=cast(HexBytes, bytes.fromhex(log["transactionHash"][2:])),
                     transactionIndex=log["transactionIndex"],
                     removed=False,
                 ))

@@ -2,7 +2,7 @@ import os
 from importlib.resources import files
 from time import sleep
 
-from eth_utils import to_checksum_address
+from IceCreamSwapWeb3 import to_checksum_address
 from web3 import Web3
 from web3.exceptions import ContractLogicError
 from web3.main import get_default_modules

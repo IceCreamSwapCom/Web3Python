@@ -5,12 +5,12 @@ from typing import Optional
 import eth_abi
 import eth_utils
 import rlp
-from eth_utils import to_checksum_address, to_bytes
+from eth_utils import to_bytes
 from eth_utils.abi import get_abi_output_types, get_abi_input_types
 from web3.contract.contract import ContractFunction, ContractConstructor
 from web3.exceptions import ContractLogicError
 
-from IceCreamSwapWeb3 import Web3Advanced
+from IceCreamSwapWeb3 import Web3Advanced, to_checksum_address
 
 # load multicall abi
 with files("IceCreamSwapWeb3").joinpath("./abi/Multicall.abi").open('r') as f:

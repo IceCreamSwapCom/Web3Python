@@ -299,7 +299,7 @@ def main(
         node_url="https://rpc-core.icecreamswap.com",
         usdt_address="0x900101d06A7426441Ae63e9AB3B9b0F63Be145F1",
 ):
-    from eth_utils import to_checksum_address
+    from IceCreamSwapWeb3 import to_checksum_address
 
     usdt_address = to_checksum_address(usdt_address)
 
