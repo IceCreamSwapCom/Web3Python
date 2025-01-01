@@ -2,7 +2,6 @@ import os
 from importlib.resources import files
 from time import sleep
 
-from IceCreamSwapWeb3 import to_checksum_address
 from web3 import Web3
 from web3.exceptions import ContractLogicError
 from web3.main import get_default_modules
@@ -12,6 +11,7 @@ from .BatchRetryMiddleware import BatchRetryMiddleware
 from .EthAdvanced import EthAdvanced
 from .Multicall import MultiCall
 from .Web3ErrorHandlerPatch import patch_error_formatters
+from .FastChecksumAddress import to_checksum_address
 
 
 class Web3Advanced(Web3):

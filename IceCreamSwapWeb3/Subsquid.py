@@ -1,8 +1,7 @@
 from typing import cast
 
 import requests
-from IceCreamSwapWeb3 import to_checksum_address
-from eth_utils import to_checksum_address
+from .FastChecksumAddress import to_checksum_address
 from hexbytes import HexBytes
 from tqdm import tqdm
 from web3.types import FilterParams, LogReceipt
