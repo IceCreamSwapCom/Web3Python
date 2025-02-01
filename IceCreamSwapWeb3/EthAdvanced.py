@@ -1,3 +1,4 @@
+import os
 from time import sleep
 from typing import Optional, TypedDict, Sequence
 
@@ -138,7 +139,7 @@ class EthAdvanced(Eth):
             show_progress_bar: bool = False,
             p_bar=None,
             no_retry: bool = False,
-            use_subsquid: bool = True,
+            use_subsquid: bool = os.getenv("NO_SUBSQUID_LOGS") is None,
             get_logs_by_block_hash: bool = False
     ) -> list[LogReceipt]:
         filter_block_range = self.w3.filter_block_range

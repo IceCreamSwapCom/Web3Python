@@ -10,17 +10,24 @@ from web3.types import FilterParams, LogReceipt
 endpoint_cache: dict[int, str] | None = None
 def get_endpoints() -> dict[int, str]:
     global endpoint_cache
-    if endpoint_cache is not None:
-        return endpoint_cache
-    res = requests.get("https://cdn.subsquid.io/archives/evm.json")
-    res.raise_for_status()
+    if endpoint_cache is None:
+        res = requests.get("https://cdn.subsquid.io/archives/evm.json")
+        res.raise_for_status()
 
-    endpoints: dict[int, str] = {}
-    for chain in res.json()["archives"]:
-        endpoints[chain["chainId"]] = chain["providers"][0]["dataSourceUrl"]
+        endpoints: dict[int, str] = {}
+        for chain in res.json()["archives"]:
+            endpoints[chain["chainId"]] = chain["providers"][0]["dataSourceUrl"]
 
-    endpoint_cache = endpoints
-    return endpoints
+        endpoint_cache = endpoints
+    return endpoint_cache
+
+latest_block_cache: int | None = None
+def get_latest_subsquid_block(gateway_url: str) -> int:
+    global latest_block_cache
+    if latest_block_cache is None:
+        latest_block_cache = int(get_text(f"{gateway_url}/height"))
+
+    return latest_block_cache
 
 def get_text(url: str) -> str:
     res = requests.get(url)
@@ -44,7 +51,7 @@ def get_filter(
     from_block: int = filter_params['fromBlock']
     to_block: int = filter_params['toBlock']
 
-    latest_block = int(get_text(f"{gateway_url}/height"))
+    latest_block = get_latest_subsquid_block(gateway_url)
 
     if from_block > latest_block:
         raise ValueError(f"Subsquid has only indexed till block {latest_block}")
@@ -76,13 +83,15 @@ def get_filter(
         topics = filter_params["topics"]
         assert len(topics) <= 4
         for i in range(len(topics)):
-            topic: str | list[str]
-            if isinstance(topics[i], str):
+            topic: list[str]
+            if topics[i] is None:
+                continue
+            elif isinstance(topics[i], str):
                 topic = [topics[i]]
-            elif hasattr(topics[i], "hex"):
-                topic = [topics[i].hex()]
+            elif hasattr(topics[i], "to_0x_hex"):
+                topic = [topics[i].to_0x_hex()]
             else:
-                topic = [(single_topic.hex() if not isinstance(single_topic, str) else single_topic) for single_topic in topics[i]]
+                topic = [(single_topic.to_0x_hex() if not isinstance(single_topic, str) else single_topic) for single_topic in topics[i]]
             query["logs"][0][f"topic{i}"] = topic
 
     logs: list[LogReceipt] = []
