@@ -76,6 +76,7 @@ class Web3Advanced(Web3):
         self.revert_reason_available: bool = self._check_revert_reason_available()
         if not self.revert_reason_available:
             print(f"RPC {self.node_url} does not return revert reasons")
+        self.overwrites_available: bool = self._check_overwrites_available()
 
         self.middleware_onion.inject(BatchRetryMiddleware, layer=0, name="batch_retry")  # split and retry batch requests
 
@@ -142,3 +143,26 @@ class Web3Advanced(Web3):
             if not isinstance(e, ContractLogicError):
                 return False
             return e.message == "execution reverted: abc"
+
+    def _check_overwrites_available(self) -> bool:
+        with files("IceCreamSwapWeb3").joinpath("./abi/OverwriteTester.abi").open('r') as f:
+            overwrite_tester_abi = f.read()
+        with files("IceCreamSwapWeb3").joinpath("./bytecode/OverwriteTesterRuntime.bytecode").open('r') as f:
+            overwrite_tester_bytecode = f.read()
+
+        test_address = to_checksum_address("0x1234567800000000000000000000000000000001")
+        test_value = 1234
+        overwrite_tester_contract = self.eth.contract(abi=overwrite_tester_abi, address=test_address)
+        try:
+            response = overwrite_tester_contract.functions.getSlot0().call(state_override={
+                test_address: {
+                    "code": overwrite_tester_bytecode,
+                    "stateDiff": {
+                        "0x" + "00" * 32: "0x" + hex(test_value)[2:].rjust(64, "0")
+                    }
+                }
+            })
+        except Exception as e:
+            print(f"RPC does not support state overwrites, got: {repr(e)}")
+            return False
+        return response == test_value
