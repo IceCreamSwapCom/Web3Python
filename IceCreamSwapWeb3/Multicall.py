@@ -11,7 +11,7 @@ from web3.contract.contract import ContractFunction, ContractConstructor
 from web3.exceptions import ContractLogicError
 
 from IceCreamSwapWeb3 import Web3Advanced
-from FastChecksumAddress import to_checksum_address
+from .FastChecksumAddress import to_checksum_address
 
 # load multicall abi
 with files("IceCreamSwapWeb3").joinpath("./abi/Multicall.abi").open('r') as f:
