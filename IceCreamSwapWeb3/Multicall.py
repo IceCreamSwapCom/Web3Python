@@ -3,15 +3,15 @@ from importlib.resources import files
 from typing import Optional
 
 import eth_abi
-import eth_utils
-import rlp
 from eth_utils import to_bytes
 from eth_utils.abi import get_abi_output_types, get_abi_input_types
 from web3.contract.contract import ContractFunction, ContractConstructor
 from web3.exceptions import ContractLogicError
+from web3.types import StateOverride
 
-from IceCreamSwapWeb3 import Web3Advanced
+from .AddressCalculator import calculate_create_address
 from .FastChecksumAddress import to_checksum_address
+from .Web3Advanced import Web3Advanced
 
 # load multicall abi
 with files("IceCreamSwapWeb3").joinpath("./abi/Multicall.abi").open('r') as f:
@@ -54,7 +54,7 @@ class MultiCall:
                 abi=MULTICALL_ABI,
                 address=to_checksum_address(self.MULTICALL_DEPLOYMENTS[self.chain_id])
             )
-            self.undeployed_contract_address = self.calculate_create_address(sender=self.multicall.address, nonce=1)
+            self.undeployed_contract_address = calculate_create_address(sender=self.multicall.address, nonce=1)
         else:
             self.multicall = self.w3.eth.contract(abi=UNDEPLOYED_MULTICALL_ABI, bytecode=UNDEPLOYED_MULTICALL_BYTECODE)
             self.undeployed_contract_address = self.calculate_expected_contract_address(sender=self.CALLER_ADDRESS, nonce=0)
@@ -75,30 +75,53 @@ class MultiCall:
         contract_func.address = 0  # self.undeployed_contract_address
         self.calls.append(contract_func)
 
-    def call(self, use_revert: Optional[bool] = None, batch_size: int = 1_000):
-        results, _ = self.call_with_gas(use_revert=use_revert, batch_size=batch_size)
+    def call(
+            self,
+            use_revert: Optional[bool] = None,
+            batch_size: int = 1_000,
+            state_override: Optional[StateOverride] = None
+    ):
+        results, _ = self.call_with_gas(
+            use_revert=use_revert,
+            batch_size=batch_size,
+            state_override=state_override
+        )
         return results
 
-    def call_with_gas(self, use_revert: Optional[bool] = None, batch_size: int = 1_000):
+    def call_with_gas(
+            self,
+            use_revert: Optional[bool] = None,
+            batch_size: int = 1_000,
+            state_override: Optional[StateOverride] = None
+    ):
+        if state_override is not None:
+            assert self.w3.overwrites_available
         if use_revert is None:
             use_revert = self.w3.revert_reason_available
 
         calls = self.calls
         calls_with_calldata = self.add_calls_calldata(calls)
 
-        return self._inner_call(use_revert=use_revert, calls_with_calldata=calls_with_calldata, batch_size=batch_size)
+        return self._inner_call(
+            use_revert=use_revert,
+            calls_with_calldata=calls_with_calldata,
+            batch_size=batch_size,
+            state_override=state_override
+        )
 
     def _inner_call(
             self,
             use_revert: bool,
             calls_with_calldata: list[tuple[ContractFunction, bytes]],
-            batch_size: int
+            batch_size: int,
+            state_override: Optional[StateOverride] = None
     ) -> tuple[list[Exception | tuple[any, ...]], list[int]]:
         if len(calls_with_calldata) == 0:
             return [], []
         kwargs = dict(
             use_revert=use_revert,
             batch_size=batch_size,
+            state_override=state_override,
         )
         # make sure calls are not bigger than batch_size
         if len(calls_with_calldata) > batch_size:
@@ -128,7 +151,8 @@ class MultiCall:
             raw_returns, gas_usages = self._call_multicall(
                 multicall_call=multicall_call,
                 use_revert=use_revert,
-                retry=False
+                retry=False,
+                state_override=state_override
             )
         except Exception as e:
             if len(calls_with_calldata) == 1:
@@ -136,7 +160,8 @@ class MultiCall:
                     raw_returns, gas_usages = self._call_multicall(
                         multicall_call=multicall_call,
                         use_revert=use_revert,
-                        retry=True
+                        retry=True,
+                        state_override=state_override
                     )
                 except Exception as e:
                     raw_returns = [e]
@@ -161,18 +186,9 @@ class MultiCall:
 
     @staticmethod
     def calculate_expected_contract_address(sender: str, nonce: int):
-        undeployed_contract_runner_address = MultiCall.calculate_create_address(sender=sender, nonce=nonce)
-        contract_address = MultiCall.calculate_create_address(sender=undeployed_contract_runner_address, nonce=1)
+        undeployed_contract_runner_address = calculate_create_address(sender=sender, nonce=nonce)
+        contract_address = calculate_create_address(sender=undeployed_contract_runner_address, nonce=1)
         return contract_address
-
-    @staticmethod
-    def calculate_create_address(sender: str, nonce: int) -> str:
-        assert len(sender) == 42
-        sender_bytes = to_bytes(hexstr=sender)
-        raw = rlp.encode([sender_bytes, nonce])
-        h = eth_utils.keccak(raw)
-        address_bytes = h[12:]
-        return eth_utils.to_checksum_address(address_bytes)
 
     @staticmethod
     def add_calls_calldata(calls: list[ContractFunction]) -> list[tuple[ContractFunction, bytes]]:
@@ -340,7 +356,8 @@ class MultiCall:
             self,
             multicall_call: ContractConstructor | ContractFunction,
             use_revert: bool,
-            retry: bool = False
+            retry: bool = False,
+            state_override: Optional[StateOverride] = None
     ):
         # call transaction
         try:
@@ -350,7 +367,7 @@ class MultiCall:
                     "nonce": 0,
                     "data": multicall_call.data_in_transaction,
                     "no_retry": not retry,
-                })
+                }, state_override=state_override)
             else:
                 assert isinstance(multicall_call, ContractFunction)
                 # manually encoding and decoding call because web3.py is sooooo slow...
@@ -369,7 +386,7 @@ class MultiCall:
                     "nonce": 0,
                     "data": calldata,
                     "no_retry": not retry,
-                })
+                }, state_override=state_override)
                 _, multicall_result = eth_abi.decode(get_abi_output_types(multicall_call.abi), raw_response)
 
                 if len(multicall_result) > 0 and self.undeployed_contract_constructor is not None:
@@ -416,6 +433,8 @@ def main(
         node_url="https://rpc-core.icecreamswap.com",
         usdt_address=to_checksum_address("0x900101d06A7426441Ae63e9AB3B9b0F63Be145F1"),
 ):
+    from IceCreamSwapWeb3 import Web3Advanced
+
     w3 = Web3Advanced(node_url=node_url)
 
     with files("IceCreamSwapWeb3").joinpath("./abi/Counter.abi").open('r') as f:
