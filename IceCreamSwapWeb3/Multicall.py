@@ -11,7 +11,6 @@ from web3.types import StateOverride
 
 from .AddressCalculator import calculate_create_address
 from .FastChecksumAddress import to_checksum_address
-from .Web3Advanced import Web3Advanced
 
 # load multicall abi
 with files("IceCreamSwapWeb3").joinpath("./abi/Multicall.abi").open('r') as f:
@@ -44,7 +43,7 @@ class MultiCall:
 
     def __init__(
             self,
-            w3: Web3Advanced
+            w3: "Web3Advanced"
     ):
         self.w3 = w3
         self.chain_id = self.w3.eth.chain_id
