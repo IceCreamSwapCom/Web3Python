@@ -59,20 +59,23 @@ class MultiCall:
             self.undeployed_contract_address = self.calculate_expected_contract_address(sender=self.CALLER_ADDRESS, nonce=0)
 
         self.calls: list[ContractFunction] = []
+        self.state_overwrites: list[StateOverride | None] = []
         self.undeployed_contract_constructor: Optional[ContractConstructor] = None
 
-    def add_call(self, contract_func: ContractFunction):
+    def add_call(self, contract_func: ContractFunction, state_override: Optional[StateOverride] = None):
         self.calls.append(contract_func)
+        self.state_overwrites.append(state_override)
 
     def add_undeployed_contract(self, contract_constructor: ContractConstructor):
         assert self.undeployed_contract_constructor is None, "can only add one undeployed contract"
         self.undeployed_contract_constructor = contract_constructor
 
-    def add_undeployed_contract_call(self, contract_func: ContractFunction):
+    def add_undeployed_contract_call(self, contract_func: ContractFunction, state_override: Optional[StateOverride] = None):
         assert self.undeployed_contract_constructor is not None, "No undeployed contract added yet"
         contract_func = copy.copy(contract_func)
         contract_func.address = 0  # self.undeployed_contract_address
         self.calls.append(contract_func)
+        self.state_overwrites.append(state_override)
 
     def call(
             self,
@@ -99,13 +102,15 @@ class MultiCall:
             use_revert = self.w3.revert_reason_available
 
         calls = self.calls
+        state_overwrites = self.state_overwrites
         calls_with_calldata = self.add_calls_calldata(calls)
 
         return self._inner_call(
             use_revert=use_revert,
             calls_with_calldata=calls_with_calldata,
             batch_size=batch_size,
-            state_override=state_override
+            state_overwrites=state_overwrites,
+            global_state_override=state_override,
         )
 
     def _inner_call(
@@ -113,23 +118,27 @@ class MultiCall:
             use_revert: bool,
             calls_with_calldata: list[tuple[ContractFunction, bytes]],
             batch_size: int,
-            state_override: Optional[StateOverride] = None
+            state_overwrites: list[StateOverride | None],
+            global_state_override: StateOverride | None = None,
     ) -> tuple[list[Exception | tuple[any, ...]], list[int]]:
+        assert len(calls_with_calldata) == len(state_overwrites)
         if len(calls_with_calldata) == 0:
             return [], []
         kwargs = dict(
             use_revert=use_revert,
             batch_size=batch_size,
-            state_override=state_override,
+            global_state_override=global_state_override,
         )
         # make sure calls are not bigger than batch_size
         if len(calls_with_calldata) > batch_size:
             results_combined = []
             gas_usages_combined = []
             for start in range(0, len(calls_with_calldata), batch_size):
+                end = min(start + batch_size, len(calls_with_calldata))
                 results, gas_usages = self._inner_call(
                     **kwargs,
-                    calls_with_calldata=calls_with_calldata[start: min(start + batch_size, len(calls_with_calldata))],
+                    calls_with_calldata=calls_with_calldata[start:end],
+                    state_overwrites=state_overwrites[start:end]
                 )
                 results_combined += results
                 gas_usages_combined += gas_usages
@@ -145,6 +154,8 @@ class MultiCall:
                 calls_with_calldata=calls_with_calldata
             )
             use_revert = False
+
+        state_override = self.merge_state_overwrites([global_state_override] + state_overwrites)
 
         try:
             raw_returns, gas_usages = self._call_multicall(
@@ -166,8 +177,17 @@ class MultiCall:
                     raw_returns = [e]
                     gas_usages = [None]
             else:
-                left_results, left_gas_usages = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[:len(calls_with_calldata) // 2])
-                right_results, right_gas_usages = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[len(calls_with_calldata) // 2:])
+                middle = len(calls_with_calldata) // 2
+                left_results, left_gas_usages = self._inner_call(
+                    **kwargs,
+                    calls_with_calldata=calls_with_calldata[:middle],
+                    state_overwrites=state_overwrites[:middle]
+                )
+                right_results, right_gas_usages = self._inner_call(
+                    **kwargs,
+                    calls_with_calldata=calls_with_calldata[middle:],
+                    state_overwrites=state_overwrites[middle:]
+                )
                 return left_results + right_results, left_gas_usages + right_gas_usages
         else:
             if len(raw_returns) != len(calls_with_calldata) and len(raw_returns) > 1:
@@ -180,8 +200,49 @@ class MultiCall:
         if len(results) == len(calls_with_calldata):
             return results, gas_usages
         # if not all calls were executed, recursively execute remaining calls and concatenate results
-        right_results, right_gas_usages = self._inner_call(**kwargs, calls_with_calldata=calls_with_calldata[len(results):])
+        right_results, right_gas_usages = self._inner_call(
+            **kwargs,
+            calls_with_calldata=calls_with_calldata[len(results):],
+            state_overwrites=state_overwrites[len(results):]
+        )
         return results + right_results, gas_usages + right_gas_usages
+
+    @staticmethod
+    def merge_state_overwrites(state_overwrites: list[StateOverride | None]) -> StateOverride | None:
+        if all(overwrite is None for overwrite in state_overwrites):
+            return None
+        merged_overwrite: StateOverride = {}
+        for overwrites in state_overwrites:
+            if overwrites is None:
+                continue
+            for contract_address, overwrite in overwrites.items():
+                if contract_address not in merged_overwrite:
+                    merged_overwrite[contract_address] = copy.deepcopy(overwrite)
+                    continue
+                prev_overwrite = merged_overwrite[contract_address]
+                if "balance" in overwrite:
+                    assert "balance" not in prev_overwrite
+                    prev_overwrite["balance"] = overwrite["balance"]
+                if "nonce" in overwrite:
+                    assert "nonce" not in prev_overwrite
+                    prev_overwrite["nonce"] = overwrite["nonce"]
+                if "code" in overwrite:
+                    assert "code" not in prev_overwrite
+                    prev_overwrite["code"] = overwrite["code"]
+                if "state" in overwrite:
+                    assert "state" not in prev_overwrite
+                    assert "stateDiff" not in prev_overwrite
+                    prev_overwrite["state"] = overwrite["state"]
+                if "stateDiff" in overwrite:
+                    assert "state" not in prev_overwrite
+                    if "stateDiff" not in prev_overwrite:
+                        prev_overwrite["stateDiff"] = copy.deepcopy(overwrite["stateDiff"])
+                    else:
+                        prev_state_diff = prev_overwrite["stateDiff"]
+                        for slot, value in overwrite["stateDiff"].items():
+                            assert slot not in prev_state_diff
+                            prev_state_diff[slot] = value
+        return merged_overwrite
 
     @staticmethod
     def calculate_expected_contract_address(sender: str, nonce: int):
