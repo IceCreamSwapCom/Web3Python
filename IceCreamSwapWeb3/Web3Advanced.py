@@ -10,6 +10,7 @@ from web3.middleware import ExtraDataToPOAMiddleware
 from .BatchRetryMiddleware import BatchRetryMiddleware
 from .EthAdvanced import EthAdvanced
 from .Multicall import MultiCall
+from .Subsquid import get_endpoints
 from .Web3ErrorHandlerPatch import patch_error_formatters
 from .FastChecksumAddress import to_checksum_address
 
@@ -77,6 +78,7 @@ class Web3Advanced(Web3):
         if not self.revert_reason_available:
             print(f"RPC {self.node_url} does not return revert reasons")
         self.overwrites_available: bool = self._check_overwrites_available()
+        self.subsquid_available: bool = self._check_subsquid_available()
 
         self.middleware_onion.inject(BatchRetryMiddleware, layer=0, name="batch_retry")  # split and retry batch requests
 
@@ -166,3 +168,17 @@ class Web3Advanced(Web3):
             print(f"RPC does not support state overwrites, got: {repr(e)}")
             return False
         return response == test_value
+
+    def _check_subsquid_available(self) -> bool:
+        try:
+            endpoints = get_endpoints()
+        except Exception as e:
+            print(f"Could not get supported chains from SubSquid: {repr(e)}")
+            return False
+
+        chain_id = self.eth.chain_id
+        if chain_id not in endpoints:
+            print(f"SubSquid does not support chain {chain_id}")
+            return False
+
+        return True

@@ -181,7 +181,7 @@ class EthAdvanced(Eth):
             use_subsquid=use_subsquid,
         )
 
-        if use_subsquid and from_block < self.w3.latest_seen_block - self.w3.unstable_blocks:
+        if use_subsquid and self.w3.subsquid_available and from_block < self.w3.latest_seen_block - self.w3.unstable_blocks:
             kwargs["use_subsquid"] = False  # make sure we only try once with Subsquid
             try:
                 # trying to get logs from SubSquid
