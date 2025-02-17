@@ -3,7 +3,6 @@ from typing import cast
 import requests
 from .FastChecksumAddress import to_checksum_address
 from hexbytes import HexBytes
-from tqdm import tqdm
 from web3.types import FilterParams, LogReceipt
 
 
@@ -38,7 +37,7 @@ def get_filter(
         chain_id: int,
         filter_params: FilterParams,
         partial_allowed=False,
-        p_bar: tqdm = None
+        p_bar = None
 ) -> tuple[int, list[LogReceipt]]:
     endpoints = get_endpoints()
     if chain_id not in endpoints:
