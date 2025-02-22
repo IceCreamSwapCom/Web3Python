@@ -21,24 +21,25 @@ class BatchRetryMiddleware(Web3Middleware):
                     response += middleware(requests_info[start:start + self._w3.rpc_batch_max_size])
                 return response
 
+            if self._w3.rpc_batch_max_size == 0 or len(requests_info) == 1:
+                # if RPC does not support batch requests or single request in batch, make individual requests
+                return [
+                    exponential_retry(method)(make_batch_request.__self__.make_request)(
+                        method,
+                        params,
+                        no_retry=not self._w3.should_retry
+                    )
+                    for method, params in requests_info
+                ]
+
             try:
-                if self._w3.rpc_batch_max_size == 0 or len(requests_info) == 1:
-                    # if RPC does not support batch requests or single request in batch, make individual requests
-                    response = [
-                        exponential_retry(method)(make_batch_request.__self__.make_request)(
-                            method,
-                            params,
-                            no_retry=not self._w3.should_retry
-                        )
-                        for method, params in requests_info
-                    ]
-                else:
-                    response = make_batch_request(requests_info)
+                response = make_batch_request(requests_info)
             except Exception as e:
-                assert len(requests_info) > 1
                 print(f"batch RPC call with {len(requests_info)} requests got exception {repr(e)}, splitting and retrying")
             else:
-                if len(response) == len(requests_info):
+                if len(response) != len(requests_info):
+                    print(f"made batch request with size {len(requests_info)} but only received {len(response)} results. splitting and retrying.{f' Sample response: {response[0]}' if len(response) != 0 else ''}")
+                else:
                     # find individual failed requests
                     requests_retry = []
                     request_indexes: list[tuple[int, int]] = []
@@ -47,19 +48,19 @@ class BatchRetryMiddleware(Web3Middleware):
                             request_indexes.append((i, len(requests_retry)))
                             requests_retry.append(request_single)
 
-                    if len(requests_retry) != 0:
-                        # retry failed requests
-                        print(f"{len(requests_retry)}/{len(requests_info)} requests in batch failed, retrying. Example response: {response[request_indexes[0][0]]}")
-                        if len(requests_retry) == len(requests_info):
-                            # all failed, let's wait a moment before retrying
-                            sleep(1)
+                    if len(requests_retry) == 0:
+                        return response
+
+                    print(f"{len(requests_retry)}/{len(requests_info)} requests in batch failed, retrying. Example response: {response[request_indexes[0][0]]}")
+
+                    if len(requests_retry) != len(requests_info):  # if some requests succeeded, retry failed requests
                         response_new = middleware(requests_retry)
                         for old_idx, new_idx in request_indexes:
                             response[old_idx] = response_new[new_idx]
+                        return response
 
-                    return response
-                else:
-                    print(f"made batch request with size {len(requests_info)} but only received {len(response)} results. splitting and retrying.{f' Sample response: {response[0]}'if len(response) != 0 else ''}")
+            assert len(requests_info) > 1
             middle = len(requests_info) // 2
+            sleep(0.1)
             return middleware(requests_info[:middle]) + middleware(requests_info[middle:])
         return middleware
