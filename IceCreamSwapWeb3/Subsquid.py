@@ -53,7 +53,7 @@ def get_filter(
     latest_block = get_latest_subsquid_block(gateway_url)
 
     if from_block > latest_block:
-        raise ValueError(f"Subsquid has only indexed till block {latest_block}")
+        raise ValueError(f"Subsquid only has indexed till block {latest_block}")
 
     if to_block > latest_block:
         if partial_allowed:

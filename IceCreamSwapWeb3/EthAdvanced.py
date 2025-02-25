@@ -195,7 +195,8 @@ class EthAdvanced(Eth):
                     return results
                 return results + self.get_logs({**filter_params, "fromBlock": till_block + 1}, **kwargs)
             except Exception as e:
-                print(f"Getting logs from SubSquid threw exception {repr(e)}, falling back to RPC")
+                if not isinstance(e, ValueError) or "Subsquid only has indexed till block " not in str(e):
+                    print(f"Getting logs from SubSquid threw exception {repr(e)}, falling back to RPC")
 
         last_stable_block = self.w3.latest_seen_block - self.w3.unstable_blocks
         if get_logs_by_block_hash or to_block > last_stable_block:
