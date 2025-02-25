@@ -23,8 +23,14 @@ class BatchRetryMiddleware(Web3Middleware):
 
             if self._w3.rpc_batch_max_size == 0 or len(requests_info) == 1:
                 # if RPC does not support batch requests or single request in batch, make individual requests
+                def request_wrapper(method, params):
+                    response =  make_batch_request.__self__.make_request(method, params)
+                    if "error" in response and self._w3.should_retry:
+                        raise Exception(response["error"].get("message") or "Unknown RPC Error")
+                    return response
+
                 return [
-                    exponential_retry(method)(make_batch_request.__self__.make_request)(
+                    exponential_retry(f"[batch]{method}")(request_wrapper)(
                         method,
                         params,
                         no_retry=not self._w3.should_retry
