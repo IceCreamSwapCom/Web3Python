@@ -70,8 +70,6 @@ class Web3Advanced(Web3):
         self.rpc_batch_max_size = self._find_max_batch_size()
         self.revert_reason_available: bool = self._check_revert_reason_available()
         self.is_archive = self._check_is_archive()
-        if not self.revert_reason_available:
-            print(f"RPC {self.node_url} does not return revert reasons")
         self.overwrites_available: bool = self._check_overwrites_available()
         self.subsquid_available: bool = self._check_subsquid_available()
 
@@ -132,9 +130,11 @@ class Web3Advanced(Web3):
                 })
                 assert result == []
                 return filter_range
-            except Exception:
-                sleep(0.1)
-        print(f"Can not use eth_getLogs with RPC {self.node_url}")
+            except Exception as e:
+                if filter_range == self.FILTER_RANGES_TO_TRY[-1]:
+                    print(f"Can not use eth_getLogs, got: {repr(e)}")
+                else:
+                    sleep(0.1)
         return 0
 
     def _find_max_batch_size(self) -> int:
@@ -148,8 +148,10 @@ class Web3Advanced(Web3):
                 assert len(result) == batch_size
                 working_size = batch_size
                 sleep(0.1)
-        except Exception:
-            pass
+        except Exception as e:
+            if working_size == 0:
+                print(f"RPC does not support batch requests, got: {repr(e)}")
+
         return working_size
 
     def _check_is_archive(self):
@@ -159,7 +161,8 @@ class Web3Advanced(Web3):
                 "data": f"{0:064x}"
             }, block_identifier=1, no_retry=True)
             return True
-        except Exception:
+        except Exception as e:
+            print(f"RPC does not support archive requests, got: {repr(e)}")
             return False
 
     def _check_revert_reason_available(self):
@@ -173,11 +176,16 @@ class Web3Advanced(Web3):
                 "data": revert_tester_contract.constructor().data_in_transaction
             }, no_retry=True)
             # should revert, if not, reverts are useless
+            print(f"RPC does not revert besides it should")
             return False
         except Exception as e:
             if not isinstance(e, ContractLogicError):
+                print(f"RPC does not properly return revert reasons, got: {repr(e)}")
                 return False
-            return e.message == "execution reverted: abc"
+            available = e.message == "execution reverted: abc"
+            if not available:
+                print(f"RPC does not return expected revert reasons, got: {repr(e)}")
+            return available
 
     def _check_overwrites_available(self) -> bool:
         with files("IceCreamSwapWeb3").joinpath("./abi/OverwriteTester.abi").open('r') as f:
