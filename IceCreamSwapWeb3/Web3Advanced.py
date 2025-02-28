@@ -75,6 +75,7 @@ class Web3Advanced(Web3):
         self.filter_block_range = self._find_max_filter_range()
         self.rpc_batch_max_size = self._find_max_batch_size()
         self.revert_reason_available: bool = self._check_revert_reason_available()
+        self.is_archive = self._check_is_archive()
         if not self.revert_reason_available:
             print(f"RPC {self.node_url} does not return revert reasons")
         self.overwrites_available: bool = self._check_overwrites_available()
@@ -128,6 +129,16 @@ class Web3Advanced(Web3):
         except Exception:
             pass
         return working_size
+
+    def _check_is_archive(self):
+        try:
+            self.eth.call({
+                "to": "0x0000000000000000000000000000000000000000",
+                "data": f"{0:064x}"
+            }, block_identifier=1, no_retry=True)
+            return True
+        except Exception:
+            return False
 
     def _check_revert_reason_available(self):
         with files("IceCreamSwapWeb3").joinpath("./abi/RevertTester.abi").open('r') as f:
