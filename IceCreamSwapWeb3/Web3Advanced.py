@@ -77,24 +77,33 @@ class Web3Advanced(Web3):
 
     def __deepcopy__(self, memo):
         # create new instance, but only call init of Web3.py, not our custom one.
-        new_instance = self.__class__.__new__(self.__class__)
-        memo[id(self)] = new_instance
-        Web3.__init__(new_instance, provider=self._construct_provider(node_url=self.node_url), modules=self._get_modules())
+        new = self.__class__.__new__(self.__class__)
+        memo[id(self)] = new
 
         # Copy over all our custom data instead of running the lengthy checks of our init again
-        new_instance.manager.middleware_onion = self.manager.middleware_onion
-        new_instance.node_url = self.node_url
-        new_instance.should_retry = self.should_retry
-        new_instance.unstable_blocks = self.unstable_blocks
-        new_instance.latest_seen_block = self.latest_seen_block
-        new_instance.filter_block_range = self.filter_block_range
-        new_instance.rpc_batch_max_size = self.rpc_batch_max_size
-        new_instance.revert_reason_available = self.revert_reason_available
-        new_instance.is_archive = self.is_archive
-        new_instance.overwrites_available = self.overwrites_available
-        new_instance.subsquid_available = self.subsquid_available
+        new.node_url = self.node_url
+        new.should_retry = self.should_retry
+        new.unstable_blocks = self.unstable_blocks
+        new.latest_seen_block = self.latest_seen_block
+        new.filter_block_range = self.filter_block_range
+        new.rpc_batch_max_size = self.rpc_batch_max_size
+        new.revert_reason_available = self.revert_reason_available
+        new.is_archive = self.is_archive
+        new.overwrites_available = self.overwrites_available
+        new.subsquid_available = self.subsquid_available
 
-        return new_instance
+        # only call Web3.py init, not init of Web3Advanced
+        Web3.__init__(
+            new,
+            provider=self._construct_provider(node_url=self.node_url),
+            modules=self._get_modules()
+        )
+
+        # initialize custom middlewares
+        new.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0, name="poa")
+        new.middleware_onion.inject(BatchRetryMiddleware, layer=0, name="batch_retry")
+
+        return new
 
     @staticmethod
     def _get_modules():
