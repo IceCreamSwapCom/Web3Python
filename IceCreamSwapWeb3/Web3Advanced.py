@@ -60,13 +60,7 @@ class Web3Advanced(Web3):
         self.should_retry = should_retry
         self.unstable_blocks = unstable_blocks
 
-        provider = self._construct_provider(node_url=self.node_url)
-
-        # use the EthAdvanced class instead of the Eth class for w3.eth
-        modules = get_default_modules()
-        modules["eth"] = EthAdvanced
-
-        super().__init__(provider=provider, modules=modules)
+        super().__init__(provider=self._construct_provider(node_url=self.node_url), modules=self._get_modules())
 
         self.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0, name="poa")  # required for pos chains
 
@@ -82,6 +76,34 @@ class Web3Advanced(Web3):
         self.subsquid_available: bool = self._check_subsquid_available()
 
         self.middleware_onion.inject(BatchRetryMiddleware, layer=0, name="batch_retry")  # split and retry batch requests
+
+    def __deepcopy__(self, memo):
+        # create new instance, but only call init of Web3.py, not our custom one.
+        new_instance = self.__class__.__new__(self.__class__)
+        memo[id(self)] = new_instance
+        Web3.__init__(new_instance, provider=self._construct_provider(node_url=self.node_url), modules=self._get_modules())
+
+        # Copy over all our custom data instead of running the lengthy checks of our init again
+        new_instance.manager.middleware_onion = self.manager.middleware_onion
+        new_instance.node_url = self.node_url
+        new_instance.should_retry = self.should_retry
+        new_instance.unstable_blocks = self.unstable_blocks
+        new_instance.latest_seen_block = self.latest_seen_block
+        new_instance.filter_block_range = self.filter_block_range
+        new_instance.rpc_batch_max_size = self.rpc_batch_max_size
+        new_instance.revert_reason_available = self.revert_reason_available
+        new_instance.is_archive = self.is_archive
+        new_instance.overwrites_available = self.overwrites_available
+        new_instance.subsquid_available = self.subsquid_available
+
+        return new_instance
+
+    @staticmethod
+    def _get_modules():
+        # use the EthAdvanced class instead of the Eth class for w3.eth
+        modules = get_default_modules()
+        modules["eth"] = EthAdvanced
+        return modules
 
     @staticmethod
     def _construct_provider(node_url):
