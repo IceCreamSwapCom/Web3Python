@@ -3,6 +3,7 @@ from importlib.resources import files
 from typing import Optional
 
 import eth_abi
+from eth_typing import BlockIdentifier
 from eth_utils import to_bytes
 from eth_utils.abi import get_abi_output_types, get_abi_input_types
 from web3.contract.contract import ContractFunction, ContractConstructor
@@ -81,12 +82,14 @@ class MultiCall:
             self,
             use_revert: Optional[bool] = None,
             batch_size: int = 1_000,
-            state_override: Optional[StateOverride] = None
+            state_override: Optional[StateOverride] = None,
+            block_identifier: Optional[BlockIdentifier] = None
     ):
         results, _ = self.call_with_gas(
             use_revert=use_revert,
             batch_size=batch_size,
-            state_override=state_override
+            state_override=state_override,
+            block_identifier=block_identifier
         )
         return results
 
@@ -94,7 +97,8 @@ class MultiCall:
             self,
             use_revert: Optional[bool] = None,
             batch_size: int = 1_000,
-            state_override: Optional[StateOverride] = None
+            state_override: Optional[StateOverride] = None,
+            block_identifier: Optional[BlockIdentifier] = None
     ):
         if state_override is not None:
             assert self.w3.overwrites_available
@@ -111,6 +115,7 @@ class MultiCall:
             batch_size=batch_size,
             state_overwrites=state_overwrites,
             global_state_override=state_override,
+            block_identifier=block_identifier,
         )
 
     def _inner_call(
@@ -120,6 +125,7 @@ class MultiCall:
             batch_size: int,
             state_overwrites: list[StateOverride | None],
             global_state_override: StateOverride | None = None,
+            block_identifier: Optional[BlockIdentifier] = None
     ) -> tuple[list[Exception | tuple[any, ...]], list[int]]:
         assert len(calls_with_calldata) == len(state_overwrites)
         if len(calls_with_calldata) == 0:
@@ -128,6 +134,7 @@ class MultiCall:
             use_revert=use_revert,
             batch_size=batch_size,
             global_state_override=global_state_override,
+            block_identifier=block_identifier
         )
         # make sure calls are not bigger than batch_size
         if len(calls_with_calldata) > batch_size:
@@ -162,7 +169,8 @@ class MultiCall:
                 multicall_call=multicall_call,
                 use_revert=use_revert,
                 retry=False,
-                state_override=state_override
+                state_override=state_override,
+                block_identifier=block_identifier
             )
         except Exception as e:
             if len(calls_with_calldata) == 1:
@@ -171,7 +179,8 @@ class MultiCall:
                         multicall_call=multicall_call,
                         use_revert=use_revert,
                         retry=True,
-                        state_override=state_override
+                        state_override=state_override,
+                        block_identifier=block_identifier
                     )
                 except Exception as e:
                     raw_returns = [e]
@@ -417,7 +426,8 @@ class MultiCall:
             multicall_call: ContractConstructor | ContractFunction,
             use_revert: bool,
             retry: bool = False,
-            state_override: Optional[StateOverride] = None
+            state_override: Optional[StateOverride] = None,
+            block_identifier: Optional[BlockIdentifier] = None
     ):
         # call transaction
         try:
@@ -427,7 +437,10 @@ class MultiCall:
                     "nonce": 0,
                     "data": multicall_call.data_in_transaction,
                     "no_retry": not retry,
-                }, state_override=state_override)
+                },
+                    state_override=state_override,
+                    block_identifier=block_identifier
+                )
             else:
                 assert isinstance(multicall_call, ContractFunction)
                 # manually encoding and decoding call because web3.py is sooooo slow...
@@ -446,7 +459,10 @@ class MultiCall:
                     "nonce": 0,
                     "data": calldata,
                     "no_retry": not retry,
-                }, state_override=state_override)
+                },
+                    state_override=state_override,
+                    block_identifier=block_identifier
+                )
                 _, multicall_result = eth_abi.decode(get_abi_output_types(multicall_call.abi), raw_response)
 
                 if len(multicall_result) > 0 and self.undeployed_contract_constructor is not None:
