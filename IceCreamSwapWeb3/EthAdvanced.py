@@ -1,4 +1,5 @@
 import os
+from functools import lru_cache
 from time import sleep
 from typing import Optional, TypedDict, Sequence
 
@@ -75,8 +76,6 @@ class EthAdvanced(Eth):
 
         if self.w3.should_retry:
             self._wrap_methods_with_retry()
-
-        self.chain_id_cached = super()._chain_id()
 
     def _wrap_methods_with_retry(self):
         for method_name in self.METHODS_TO_RETRY:
@@ -292,9 +291,10 @@ class EthAdvanced(Eth):
             no_retry = True
         return exponential_retry(func_name="get_logs")(self._get_logs)(filter_params, no_retry=no_retry)
 
+    @lru_cache
     def _chain_id(self):
-        # usually this causes an RPC call and is used in every eth_call. Getting it once in the init and then not again.
-        return self.chain_id_cached
+        # usually this causes an RPC call and is used in every eth_call. Getting it once and then caching it.
+        return super()._chain_id()
 
 
 def main(
