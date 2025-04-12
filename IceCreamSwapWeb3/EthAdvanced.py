@@ -53,6 +53,9 @@ def exponential_retry(func_name: str = None):
     return wrapper
 
 
+RPC_TO_CHAIN_ID_CACHE: dict[str, int] = {}
+
+
 class EthAdvanced(Eth):
     w3: Web3Advanced
 
@@ -291,10 +294,13 @@ class EthAdvanced(Eth):
             no_retry = True
         return exponential_retry(func_name="get_logs")(self._get_logs)(filter_params, no_retry=no_retry)
 
-    @lru_cache
     def _chain_id(self):
-        # usually this causes an RPC call and is used in every eth_call. Getting it once and then caching it.
-        return super()._chain_id()
+        rpc = self.w3.node_url
+        if rpc not in RPC_TO_CHAIN_ID_CACHE:
+            RPC_TO_CHAIN_ID_CACHE[rpc] = exponential_retry(func_name="chain_id")(
+                super()._chain_id
+            )(no_retry=not self.w3.should_retry)
+        return RPC_TO_CHAIN_ID_CACHE[rpc]
 
 
 def main(
