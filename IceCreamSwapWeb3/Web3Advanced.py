@@ -13,6 +13,10 @@ from .Multicall import MultiCall
 from .Subsquid import get_endpoints
 from .Web3ErrorHandlerPatch import patch_error_formatters
 from .FastChecksumAddress import to_checksum_address
+from .Web3ProviderPatch import patch_batching
+
+patch_error_formatters()
+patch_batching()
 
 
 class Web3Advanced(Web3):
@@ -55,7 +59,6 @@ class Web3Advanced(Web3):
             should_retry: bool = True,
             unstable_blocks: int = int(os.getenv("UNSTABLE_BLOCKS", 5)),  # not all nodes might have latest n blocks, these are seen as unstable
     ):
-        patch_error_formatters()
         self.node_url = node_url
         self.should_retry = should_retry
         self.unstable_blocks = unstable_blocks
