@@ -1,5 +1,6 @@
 from time import sleep
 
+from web3.manager import NULL_RESPONSES
 from web3.middleware import Web3Middleware
 
 from IceCreamSwapWeb3 import Web3Advanced
@@ -50,7 +51,13 @@ class BatchRetryMiddleware(Web3Middleware):
                     requests_retry = []
                     request_indexes: list[tuple[int, int]] = []
                     for i, (request_single, response_single) in enumerate(zip(requests_info, response)):
-                        if "error" in response_single or response_single.get("result") is None:
+                        if (
+                            "error" in response_single or
+                            (
+                                "eth_getBlockBy" in request_single[0] and
+                                response_single.get("result") in NULL_RESPONSES
+                            )
+                        ):
                             request_indexes.append((i, len(requests_retry)))
                             requests_retry.append(request_single)
 
