@@ -28,6 +28,8 @@ class BatchRetryMiddleware(Web3Middleware):
                     response =  make_batch_request.__self__.make_request(method, params)
                     if "error" in response and self._w3.should_retry:
                         raise Exception(response["error"].get("message") or "Unknown RPC Error")
+                    if ("eth_getBlockBy" in method and response.get("result") in NULL_RESPONSES) and self._w3.should_retry:
+                        raise Exception("Block not found")
                     return response
 
                 return [
