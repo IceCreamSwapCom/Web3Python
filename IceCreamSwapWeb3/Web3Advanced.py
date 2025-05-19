@@ -120,7 +120,7 @@ class Web3Advanced(Web3):
         assert "://" in node_url
         protocol = node_url.split("://")[0]
         if protocol in ("https", "http"):
-            return Web3.HTTPProvider(node_url)
+            return Web3.HTTPProvider(node_url, exception_retry_configuration=None)
         elif protocol in ("ws", "wss"):
             return Web3.WebsocketProvider(node_url)
         else:
