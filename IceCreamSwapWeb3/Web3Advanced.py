@@ -13,10 +13,8 @@ from .Multicall import MultiCall
 from .Subsquid import get_endpoints
 from .Web3ErrorHandlerPatch import patch_error_formatters
 from .FastChecksumAddress import to_checksum_address
-from .Web3ProviderPatch import patch_batching
 
 patch_error_formatters()
-patch_batching()
 
 
 class Web3Advanced(Web3):
