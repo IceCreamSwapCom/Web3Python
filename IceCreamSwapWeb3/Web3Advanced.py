@@ -209,14 +209,17 @@ class Web3Advanced(Web3):
         test_value = 1234
         overwrite_tester_contract = self.eth.contract(abi=overwrite_tester_abi, address=test_address)
         try:
-            response = overwrite_tester_contract.functions.getSlot0().call(state_override={
-                test_address: {
-                    "code": overwrite_tester_bytecode,
-                    "stateDiff": {
-                        "0x" + "00" * 32: "0x" + hex(test_value)[2:].rjust(64, "0")
+            response = overwrite_tester_contract.functions.getSlot0().call(
+                transaction={"no_retry": True},
+                state_override={
+                    test_address: {
+                        "code": overwrite_tester_bytecode,
+                        "stateDiff": {
+                            "0x" + "00" * 32: "0x" + hex(test_value)[2:].rjust(64, "0")
+                        }
                     }
                 }
-            })
+            )
         except Exception as e:
             print(f"RPC does not support state overwrites, got: {repr(e)}")
             return False
