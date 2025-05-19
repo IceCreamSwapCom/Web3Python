@@ -39,6 +39,8 @@ def exponential_retry(func_name: str = None):
                 except Exception as e:
                     if isinstance(e, ContractLogicError):
                         raise
+                    if "unknown block" in str(e) and retries >= 3:
+                        raise
                     if retries == 0:
                         wait_for = 0
                     elif retries < 6:
