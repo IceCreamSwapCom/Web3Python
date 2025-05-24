@@ -1,11 +1,11 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.1.52'
+VERSION = '0.1.53'
 DESCRIPTION = 'IceCreamSwap Web3.py wrapper'
 LONG_DESCRIPTION = 'IceCreamSwap Web3.py wrapper with automatic retries, multicall and other advanced functionality'
 
 requirements = [
-    'web3>=7.11.1,<8',
+    'web3>=7.12,<8',
     'rlp',
 ]
 
