@@ -55,6 +55,7 @@ class BatchRetryMiddleware(Web3Middleware):
                     for i, (request_single, response_single) in enumerate(zip(requests_info, response)):
                         if (
                             "error" in response_single or
+                            response_single.get("jsonrpc") != "2.0" or
                             (
                                 "eth_getBlockBy" in request_single[0] and
                                 response_single.get("result") in NULL_RESPONSES
