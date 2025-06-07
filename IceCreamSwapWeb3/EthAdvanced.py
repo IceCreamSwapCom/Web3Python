@@ -271,8 +271,9 @@ class EthAdvanced(Eth):
             if p_bar is not None:
                 p_bar.update(num_blocks)
             return events
-        except Exception:
+        except Exception as e:
             # split the filter range and try again
+            print(f"eth_getLogs between block {from_block} and {to_block} returned {repr(e)}, splitting and retrying")
             mid_block = (from_block + to_block) // 2
             left_filter = {**filter_params, "toBlock": mid_block}
             right_filter = {**filter_params, "fromBlock": mid_block + 1}
