@@ -1,5 +1,6 @@
 from time import sleep
 
+from web3.exceptions import BadResponseFormat
 from web3.manager import NULL_RESPONSES
 from web3.middleware import Web3Middleware
 
@@ -28,6 +29,10 @@ class BatchRetryMiddleware(Web3Middleware):
                     response =  make_batch_request.__self__.make_request(method, params)
                     if "error" in response and self._w3.should_retry:
                         raise Exception(response["error"].get("message") or "Unknown RPC Error")
+                    if response.get("jsonrpc") != "2.0":
+                        raise BadResponseFormat("The response was in an unexpected format and unable to be parsed. "
+                                                "The \"jsonrpc\" field must be present with a value of \"2.0\". "
+                                                f"The raw response is: {response}")
                     if ("eth_getBlockBy" in method and response.get("result") in NULL_RESPONSES) and self._w3.should_retry:
                         raise Exception("Block not found")
                     return response
