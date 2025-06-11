@@ -51,7 +51,9 @@ class BatchRetryMiddleware(Web3Middleware):
             except Exception as e:
                 print(f"batch RPC call with {len(requests_info)} requests got exception {repr(e)}, splitting and retrying")
             else:
-                if len(response) != len(requests_info):
+                if not (isinstance(response, list) or isinstance(response, tuple)):
+                    print(f"made batch request with size {len(requests_info)} but received malformed response. splitting and retrying. Response: {response}")
+                elif len(response) != len(requests_info):
                     print(f"made batch request with size {len(requests_info)} but only received {len(response)} results. splitting and retrying.{f' Sample response: {response[0]}' if len(response) != 0 else ''}")
                 else:
                     # find individual failed requests
