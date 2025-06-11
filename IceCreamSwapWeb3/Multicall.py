@@ -249,7 +249,7 @@ class MultiCall:
                     else:
                         prev_state_diff = prev_overwrite["stateDiff"]
                         for slot, value in overwrite["stateDiff"].items():
-                            assert slot not in prev_state_diff
+                            assert slot not in prev_state_diff or prev_state_diff[slot] == value
                             prev_state_diff[slot] = value
         return merged_overwrite
 
