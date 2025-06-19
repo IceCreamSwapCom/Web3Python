@@ -10,6 +10,7 @@ from web3.contract.contract import ContractFunction, ContractConstructor
 from web3.exceptions import ContractLogicError
 from web3.types import StateOverride
 
+from IceCreamSwapWeb3.EthAdvanced import exponential_retry
 from .AddressCalculator import calculate_create_address
 from .FastChecksumAddress import to_checksum_address
 
@@ -175,10 +176,11 @@ class MultiCall:
         except Exception as e:
             if len(calls_with_calldata) == 1:
                 try:
-                    raw_returns, gas_usages = self._call_multicall(
+                    exponential_retry(func_name="multicall")(func=self._call_multicall)(
                         multicall_call=multicall_call,
                         use_revert=use_revert,
-                        retry=True,
+                        retry=self.w3.should_retry,
+                        no_retry=not self.w3.should_retry,
                         state_override=state_override,
                         block_identifier=block_identifier
                     )
