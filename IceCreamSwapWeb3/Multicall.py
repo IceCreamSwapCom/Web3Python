@@ -173,10 +173,10 @@ class MultiCall:
                 state_override=state_override,
                 block_identifier=block_identifier
             )
-        except Exception as e:
+        except Exception:
             if len(calls_with_calldata) == 1:
                 try:
-                    exponential_retry(func_name="multicall")(func=self._call_multicall)(
+                    raw_returns, gas_usages = exponential_retry(func_name="multicall")(func=self._call_multicall)(
                         multicall_call=multicall_call,
                         use_revert=use_revert,
                         retry=self.w3.should_retry,
