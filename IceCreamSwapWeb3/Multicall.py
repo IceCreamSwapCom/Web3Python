@@ -177,15 +177,15 @@ class MultiCall:
         except Exception:
             if len(calls_with_calldata) == 1:
                 try:
-                    raw_returns, gas_usages = exponential_retry(func_name="multicall")(func=self._call_multicall)(
+                    raw_returns, gas_usages = self._call_multicall(
                         multicall_call=multicall_call,
                         use_revert=use_revert,
                         retry=self.w3.should_retry,
-                        no_retry=not self.w3.should_retry,
                         state_override=state_override,
                         block_identifier=block_identifier
                     )
                 except Exception as e:
+                    print(f"Single multicall to 0x{calls_with_calldata[0][0].address.hex()} and func {calls_with_calldata[0][0].signature} got Error: {repr(e)}")
                     raw_returns = [e]
                     gas_usages = [None]
             else:
