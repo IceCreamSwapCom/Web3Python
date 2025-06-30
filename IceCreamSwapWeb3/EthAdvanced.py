@@ -290,6 +290,8 @@ class EthAdvanced(Eth):
                 p_bar.update(num_blocks)
             return events
         except Exception as e:
+            if isinstance(e, ForkedBlock):
+                raise
             # split the filter range and try again
             print(f"eth_getLogs between block {from_block} and {to_block} returned {repr(e)}, splitting and retrying")
             mid_block = (from_block + to_block) // 2
