@@ -269,7 +269,7 @@ class EthAdvanced(Eth):
                 events: list[LogReceipt]
                 to_block_body: BlockData
                 batch_results = batch.execute()
-            if from_block_parent_hash is not None:
+            if from_block_parent_hash is None:
                 events, to_block_body = batch_results
             else:
                 from_block_body: BlockData
