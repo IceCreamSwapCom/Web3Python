@@ -235,7 +235,10 @@ class EthAdvanced(Eth):
                 assert next_block <= to_block + 1, "SubSquid returned logs for more blocks than specified"
                 if next_block == to_block + 1:
                     return results
-                return results + self.get_logs({**filter_params, "fromBlock": next_block}, **kwargs)
+                partial_filter = {**filter_params, "fromBlock": next_block}
+                if from_block_parent_hash is not None and next_block != from_block:
+                    del partial_filter["fromBlockParentHash"]
+                return results + self.get_logs(partial_filter, **kwargs)
 
         # getting logs for a single block, which is not at the chain head. No drama
         if num_blocks == 1:
@@ -283,11 +286,11 @@ class EthAdvanced(Eth):
                 from_block_body, events, to_block_body = batch_results
                 assert from_block_body["number"] == from_block, "eth_getLogs RPC returned unexpected from block number"
                 if from_block_body["parentHash"].to_0x_hex() != from_block_parent_hash:
-                    raise ForkedBlock(f"expected={from_block_parent_hash}, actual={from_block_body['parentHash'].to_0x_hex()}")
+                    raise ForkedBlock(f"expected={from_block_parent_hash}, actual={from_block_body['parentHash'].to_0x_hex()} (get_logs fromBlockParentHash)")
 
             assert to_block_body["number"] == to_block, "eth_getLogs RPC returned unexpected to block number"
             if to_block_hash is not None and to_block_body["hash"].to_0x_hex() != to_block_hash:
-                raise ForkedBlock(f"expected={to_block_hash}, actual={to_block_body['hash'].to_0x_hex()}")
+                raise ForkedBlock(f"expected={to_block_hash}, actual={to_block_body['hash'].to_0x_hex()} (get_logs toBlockHash)")
 
             if p_bar is not None:
                 p_bar.update(num_blocks)
@@ -300,9 +303,9 @@ class EthAdvanced(Eth):
             mid_block = (from_block + to_block) // 2
             left_filter = {**filter_params, "toBlock": mid_block}
             right_filter = {**filter_params, "fromBlock": mid_block + 1}
-            if "toBlockHash" in left_filter:
+            if to_block_hash is not None:
                 del left_filter["toBlockHash"]
-            if "fromBlockParentHash" in right_filter:
+            if from_block_parent_hash is not None:
                 del right_filter["fromBlockParentHash"]
             return self.get_logs(left_filter, **kwargs) + self.get_logs(right_filter, **kwargs)
 
