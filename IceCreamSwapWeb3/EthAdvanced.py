@@ -265,9 +265,12 @@ class EthAdvanced(Eth):
         # get logs and split on exception
         try:
             with self.w3.batch_requests() as batch:
+                filter_params_cleaned = {**filter_params}
+                filter_params_cleaned.pop("fromBlockParentHash", None)
+                filter_params_cleaned.pop("toBlockHash", None)
                 if from_block_parent_hash is not None:
                     batch.add(self._get_block(from_block))
-                batch.add(self._get_logs(filter_params))
+                batch.add(self._get_logs(filter_params_cleaned))
                 batch.add(self._get_block(to_block))
 
                 events: list[LogReceipt]
@@ -304,6 +307,9 @@ class EthAdvanced(Eth):
             return self.get_logs(left_filter, **kwargs) + self.get_logs(right_filter, **kwargs)
 
     def get_logs_inner(self, filter_params: FilterParams, no_retry: bool = False):
+        filter_params = {**filter_params}
+        filter_params.pop("fromBlockParentHash", None)
+        filter_params.pop("toBlockHash", None)
         if not self.w3.should_retry:
             no_retry = True
         return exponential_retry(func_name="get_logs")(self._get_logs)(filter_params, no_retry=no_retry)
