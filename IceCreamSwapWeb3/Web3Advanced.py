@@ -1,4 +1,3 @@
-import os
 from importlib.resources import files
 from time import sleep
 
@@ -55,11 +54,9 @@ class Web3Advanced(Web3):
             self,
             node_url: str,
             should_retry: bool = True,
-            unstable_blocks: int = int(os.getenv("UNSTABLE_BLOCKS", 5)),  # not all nodes might have latest n blocks, these are seen as unstable
     ):
         self.node_url = node_url
         self.should_retry = should_retry
-        self.unstable_blocks = unstable_blocks
 
         super().__init__(provider=self._construct_provider(node_url=self.node_url), modules=self._get_modules())
 
@@ -84,7 +81,6 @@ class Web3Advanced(Web3):
         # Copy over all our custom data instead of running the lengthy checks of our init again
         new.node_url = self.node_url
         new.should_retry = self.should_retry
-        new.unstable_blocks = self.unstable_blocks
         new.latest_seen_block = self.latest_seen_block
         new.filter_block_range = self.filter_block_range
         new.rpc_batch_max_size = self.rpc_batch_max_size

@@ -46,6 +46,8 @@ class BatchRetryMiddleware(Web3Middleware):
                     for method, params in requests_info
                 ]
 
+            no_splitting = len(requests_info) == 2 and requests_info[0][0] == "eth_getLogs" and requests_info[1][0] == "eth_getBlockByNumber"
+
             try:
                 response = make_batch_request(requests_info)
             except Exception as e:
@@ -76,11 +78,16 @@ class BatchRetryMiddleware(Web3Middleware):
 
                     print(f"{len(requests_retry)}/{len(requests_info)} requests in batch failed, retrying. Example response: {response[request_indexes[0][0]]}")
 
-                    if len(requests_retry) != len(requests_info):  # if some requests succeeded, retry failed requests
+                    if len(requests_retry) != len(requests_info) and not no_splitting:  # if some requests succeeded, retry failed requests
                         response_new = middleware(requests_retry)
                         for old_idx, new_idx in request_indexes:
                             response[old_idx] = response_new[new_idx]
                         return response
+
+            if no_splitting:
+                # retry request. This being recursive is not optimal, but should be ok
+                sleep(0.1)
+                return middleware(requests_info)
 
             assert len(requests_info) > 1
             middle = len(requests_info) // 2

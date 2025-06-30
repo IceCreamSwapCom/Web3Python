@@ -1,11 +1,10 @@
 import os
-from functools import lru_cache
 from time import sleep
 from typing import Optional, TypedDict, Sequence
 
 from eth_typing import BlockNumber, Address, ChecksumAddress
+from eth_typing.evm import BlockParams
 from hexbytes import HexBytes
-from web3.datastructures import AttributeDict
 from web3.eth import Eth
 from web3.exceptions import ContractLogicError
 from web3.types import FilterParams, LogReceipt, StateOverride, BlockIdentifier, TxParams, BlockData, _Hash32
@@ -19,10 +18,22 @@ class ForkedBlock(Exception):
 
 
 class FilterParamsExtended(TypedDict, total=False):
+    address: ChecksumAddress | list[ChecksumAddress]
+    blockHash: HexBytes
+    fromBlock: BlockParams | BlockNumber | int
+    fromBlockParentHash: _Hash32
+    toBlock: BlockParams | BlockNumber | int
+    toBlockHash: _Hash32
+    topics: Sequence[_Hash32 | Sequence[_Hash32] | None]
+
+
+class FilterParamsSanitized(TypedDict, total=False):
     address: Address | ChecksumAddress | list[Address] | list[ChecksumAddress]
     blockHash: HexBytes
-    fromBlock: BlockIdentifier | BlockData
-    toBlock: BlockIdentifier | BlockData
+    fromBlock: int
+    fromBlockParentHash: str
+    toBlock: int
+    toBlockHash: str
     topics: Sequence[_Hash32 | Sequence[_Hash32] | None]
 
 
@@ -139,32 +150,60 @@ class EthAdvanced(Eth):
 
     def get_logs(
             self,
-            filter_params: FilterParamsExtended,
+            _filter_params: FilterParamsExtended,
             show_progress_bar: bool = False,
             p_bar=None,
             no_retry: bool = False,
-            use_subsquid: bool = os.getenv("NO_SUBSQUID_LOGS") is None,
-            get_logs_by_block_hash: bool = False
+            use_subsquid: bool = os.getenv("NO_SUBSQUID_LOGS") is None
     ) -> list[LogReceipt]:
         filter_block_range = self.w3.filter_block_range
         if filter_block_range == 0:
             raise Exception("RPC does not support eth_getLogs")
 
         # getting logs for a single block defined by its block hash. No drama
-        if "blockHash" in filter_params:
-            assert "fromBlock" not in filter_params and "toBlock" not in filter_params
-            return self.get_logs_inner(filter_params, no_retry=no_retry)
+        if "blockHash" in _filter_params:
+            assert "fromBlock" not in _filter_params and "toBlock" not in _filter_params
+            return self.get_logs_inner(_filter_params, no_retry=no_retry)
 
-        from_block, from_block_body = self.sanitize_block(filter_params.get("fromBlock", "latest"))
-        to_block, to_block_body = self.sanitize_block(filter_params.get("toBlock", "latest"))
-        filter_params = {**filter_params, "fromBlock": from_block, "toBlock": to_block}
+        filter_params: FilterParamsSanitized = {**_filter_params}
 
-        assert to_block >= from_block, f"{from_block=}, {to_block=}"
+        if "fromBlockParentHash" in filter_params:
+            if filter_params["fromBlockParentHash"] is None:
+                del filter_params["fromBlockParentHash"]
+            elif not isinstance(filter_params["fromBlockParentHash"], str):
+                filter_params["fromBlockParentHash"] = filter_params["fromBlockParentHash"].to_0x_hex()
+
+        if "toBlockHash" in filter_params:
+            if filter_params["toBlockHash"] is None:
+                del filter_params["toBlockHash"]
+            elif not isinstance(filter_params["toBlockHash"], str):
+                filter_params["toBlockHash"] = filter_params["toBlockHash"].to_0x_hex()
+
+        if "fromBlock" not in filter_params or not isinstance(filter_params["fromBlock"], int):
+            assert "fromBlockParentHash" not in filter_params, "can not specify fromBlockParentHash without fromBlock number"
+            filter_params["fromBlock"] = self.get_block(filter_params.get("fromBlock", "earliest"))["number"]
+
+        if "toBlock" not in filter_params or not isinstance(filter_params["toBlock"], int):
+            assert "toBlockHash" not in filter_params, "can not specify toBlockHash without toBlock number"
+            filter_params["toBlock"] = self.get_block(filter_params.get("toBlock", "latest"))["number"]
+
+        kwargs = dict(
+            show_progress_bar=show_progress_bar,
+            p_bar=p_bar,
+            no_retry=no_retry,
+            use_subsquid=use_subsquid,
+        )
+
+        from_block = filter_params["fromBlock"]
+        to_block = filter_params["toBlock"]
+        from_block_parent_hash = filter_params.get("fromBlockParentHash")
+        to_block_hash = filter_params.get("toBlockHash")
+
+        assert to_block >= from_block, f"from block after to block, {from_block=}, {to_block=}"
 
         # if logs for a single block are queried, and we know the block hash, query by it
-        if from_block == to_block and (from_block_body or to_block_body):
-            block_body = from_block_body if from_block_body else to_block_body
-            single_hash_filter = {**filter_params, "blockHash": block_body["hash"]}
+        if from_block == to_block and to_block_hash is not None:
+            single_hash_filter = {**filter_params, "blockHash": to_block_hash}
             del single_hash_filter["fromBlock"]
             del single_hash_filter["toBlock"]
             return self.get_logs_inner(single_hash_filter, no_retry=no_retry)
@@ -177,78 +216,26 @@ class EthAdvanced(Eth):
             # local import as tqdm is an optional dependency of this package
             from tqdm import tqdm
             p_bar = tqdm(total=num_blocks)
+            kwargs["p_bar"] = p_bar
 
-        kwargs = dict(
-            show_progress_bar=show_progress_bar,
-            p_bar=p_bar,
-            no_retry=no_retry,
-            use_subsquid=use_subsquid,
-        )
-
-        if use_subsquid and self.w3.subsquid_available and from_block < self.w3.latest_seen_block - self.w3.unstable_blocks:
+        if use_subsquid and self.w3.subsquid_available and from_block < self.w3.latest_seen_block - 1_000:
             kwargs["use_subsquid"] = False  # make sure we only try once with Subsquid
             try:
                 # trying to get logs from SubSquid
-                till_block, results = get_filter(
+                next_block, results = get_filter(
                     chain_id=self.chain_id,
-                    filter_params={**filter_params, "toBlock": min(to_block, self.w3.latest_seen_block - self.w3.unstable_blocks)},
+                    filter_params=filter_params,
                     partial_allowed=True,
                     p_bar=p_bar,
                 )
-                if till_block >= to_block:
-                    return results
-                return results + self.get_logs({**filter_params, "fromBlock": till_block + 1}, **kwargs)
             except Exception as e:
                 if not isinstance(e, ValueError) or "Subsquid only has indexed till block " not in str(e):
                     print(f"Getting logs from SubSquid threw exception {repr(e)}, falling back to RPC")
-
-        last_stable_block = self.w3.latest_seen_block - self.w3.unstable_blocks
-        if get_logs_by_block_hash or to_block > last_stable_block:
-            # getting logs via from and to block range sometimes drops logs.
-            # This does not happen when getting them individually for each block by their block hash
-            # get all block hashes and ensure they build upon each other
-
-            # if only unstable blocks need to be gathered by hash, gather stable blocks as log range
-            results: list[LogReceipt] = []
-            if not get_logs_by_block_hash and from_block < last_stable_block:
-                results += self.get_logs({**filter_params, "toBlock": last_stable_block}, **kwargs)
-                from_block = last_stable_block + 1
-                assert to_block >= from_block
-                num_blocks = to_block - from_block + 1
-
-            with self.w3.batch_requests() as batch:
-                batch.add_mapping({
-                    self.w3.eth._get_block: list(range(from_block, to_block + 1))
-                })
-                blocks: list[BlockData] = batch.execute()
-            assert len(blocks) == num_blocks
-
-            # make sure chain of blocks is consistent with each block building on the previous one
-            for i, block_number in enumerate(range(from_block, to_block + 1)):
-                block = blocks[i]
-                if i != 0:
-                    if block["parentHash"] != blocks[i-1]["hash"]:
-                        raise ForkedBlock(f"expected={blocks[i-1]['hash'].to_0x_hex()}, actual={block['parentHash'].to_0x_hex()}")
-                if from_block_body is not None and from_block_body["number"] == block_number:
-                    if block["hash"] != from_block_body["hash"]:
-                        raise ForkedBlock(f"expected={from_block_body['hash'].to_0x_hex()}, actual={block['hash'].to_0x_hex()}")
-                if to_block_body is not None and to_block_body["number"] == block_number:
-                    if block["hash"] != to_block_body["hash"]:
-                        raise ForkedBlock(f"expected={to_block_body['hash'].to_0x_hex()}, actual={block['hash'].to_0x_hex()}")
-
-            single_hash_filter = filter_params.copy()
-            del single_hash_filter["fromBlock"]
-            del single_hash_filter["toBlock"]
-            with self.w3.batch_requests() as batch:
-                batch.add_mapping({
-                    self.w3.eth._get_logs: [{**single_hash_filter, "blockHash": block["hash"]} for block in blocks]
-                })
-                results_per_block: list[list[LogReceipt]] = batch.execute()
-            assert len(results_per_block) == num_blocks
-            if p_bar is not None:
-                p_bar.update(len(blocks))
-            results += sum(results_per_block, [])
-            return results
+            else:
+                assert next_block <= to_block + 1, "SubSquid returned logs for more blocks than specified"
+                if next_block == to_block + 1:
+                    return results
+                return results + self.get_logs({**filter_params, "fromBlock": next_block}, **kwargs)
 
         # getting logs for a single block, which is not at the chain head. No drama
         if num_blocks == 1:
@@ -258,16 +245,42 @@ class EthAdvanced(Eth):
         if num_blocks > filter_block_range:
             results = []
             for filter_start in range(from_block, to_block + 1, filter_block_range):
-                results += self.get_logs({
+                filter_end = min(filter_start + filter_block_range - 1, to_block)
+                partial_filter = {
                     **filter_params,
                     "fromBlock": filter_start,
-                    "toBlock": min(filter_start + filter_block_range - 1, to_block),
-                }, **kwargs)
+                    "toBlock": filter_end,
+                }
+                if to_block_hash is not None and filter_end != to_block:
+                    del partial_filter["toBlockHash"]
+                if from_block_parent_hash is not None and filter_start != from_block:
+                    del partial_filter["fromBlockParentHash"]
+                results += self.get_logs(partial_filter, **kwargs)
             return results
 
         # get logs and split on exception
         try:
-            events = self._get_logs(filter_params)
+            with self.w3.batch_requests() as batch:
+                if from_block_parent_hash is not None:
+                    batch.add(self._get_block(from_block))
+                batch.add(self._get_logs(filter_params))
+                batch.add(self._get_block(to_block))
+            events: list[LogReceipt]
+            to_block_body: BlockData
+            batch_results = batch.execute()
+            if from_block_parent_hash is not None:
+                events, to_block_body = batch_results
+            else:
+                from_block_body: BlockData
+                events, to_block_body, from_block_body = batch_results
+                assert from_block_body["number"] == from_block, "eth_getLogs RPC returned unexpected from block number"
+                if from_block_body["parentHash"].to_0x_hex() != from_block_parent_hash:
+                    raise ForkedBlock(f"expected={from_block_parent_hash}, actual={from_block_body['parentHash'].to_0x_hex()}")
+
+            assert to_block_body["number"] == to_block, "eth_getLogs RPC returned unexpected to block number"
+            if to_block_hash is not None and to_block_body["hash"].to_0x_hex() != to_block_hash:
+                raise ForkedBlock(f"expected={to_block_hash}, actual={to_block_body['hash'].to_0x_hex()}")
+
             if p_bar is not None:
                 p_bar.update(num_blocks)
             return events
@@ -277,20 +290,11 @@ class EthAdvanced(Eth):
             mid_block = (from_block + to_block) // 2
             left_filter = {**filter_params, "toBlock": mid_block}
             right_filter = {**filter_params, "fromBlock": mid_block + 1}
+            if "toBlockHash" in left_filter:
+                del left_filter["toBlockHash"]
+            if "fromBlockParentHash" in right_filter:
+                del right_filter["fromBlockParentHash"]
             return self.get_logs(left_filter, **kwargs) + self.get_logs(right_filter, **kwargs)
-
-
-    def sanitize_block(self, block: BlockIdentifier | BlockData) -> tuple[int, BlockData | None]:
-        if isinstance(block, int):
-            block_body = None
-            block_number = block
-        elif isinstance(block, AttributeDict) or isinstance(block, dict):
-            block_body = block
-            block_number = block["number"]
-        else:
-            block_body = self.get_block(block)
-            block_number = block_body["number"]
-        return block_number, block_body
 
     def get_logs_inner(self, filter_params: FilterParams, no_retry: bool = False):
         if not self.w3.should_retry:
