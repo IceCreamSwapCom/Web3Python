@@ -265,9 +265,10 @@ class EthAdvanced(Eth):
                     batch.add(self._get_block(from_block))
                 batch.add(self._get_logs(filter_params))
                 batch.add(self._get_block(to_block))
-            events: list[LogReceipt]
-            to_block_body: BlockData
-            batch_results = batch.execute()
+
+                events: list[LogReceipt]
+                to_block_body: BlockData
+                batch_results = batch.execute()
             if from_block_parent_hash is not None:
                 events, to_block_body = batch_results
             else:
