@@ -273,7 +273,7 @@ class EthAdvanced(Eth):
                 events, to_block_body = batch_results
             else:
                 from_block_body: BlockData
-                events, to_block_body, from_block_body = batch_results
+                from_block_body, events, to_block_body = batch_results
                 assert from_block_body["number"] == from_block, "eth_getLogs RPC returned unexpected from block number"
                 if from_block_body["parentHash"].to_0x_hex() != from_block_parent_hash:
                     raise ForkedBlock(f"expected={from_block_parent_hash}, actual={from_block_body['parentHash'].to_0x_hex()}")
