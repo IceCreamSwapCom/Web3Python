@@ -251,6 +251,7 @@ class EthAdvanced(Eth):
         # if we already know that the filter range is too large, split it
         if num_blocks > filter_block_range:
             results = []
+            last_block_hash = filter_params.get("fromBlockParentHash")
             for filter_start in range(from_block, to_block + 1, filter_block_range):
                 filter_end = min(filter_start + filter_block_range - 1, to_block)
                 partial_filter = {
@@ -258,10 +259,14 @@ class EthAdvanced(Eth):
                     "fromBlock": filter_start,
                     "toBlock": filter_end,
                 }
-                if to_block_hash is not None and filter_end != to_block:
-                    del partial_filter["toBlockHash"]
-                if from_block_parent_hash is not None and filter_start != from_block:
-                    del partial_filter["fromBlockParentHash"]
+                if filter_end == to_block:
+                    to_block_hash = filter_params.get("toBlockHash")
+                else:
+                    to_block_hash = self.get_block(filter_end)["hash"].to_0x_hex()
+                partial_filter["fromBlockParentHash"] = last_block_hash
+                partial_filter["toBlockHash"] = to_block_hash
+                last_block_hash = to_block_hash
+
                 results += self.get_logs(partial_filter, **kwargs)
             return results
 
@@ -303,10 +308,9 @@ class EthAdvanced(Eth):
             mid_block = (from_block + to_block) // 2
             left_filter = {**filter_params, "toBlock": mid_block}
             right_filter = {**filter_params, "fromBlock": mid_block + 1}
-            if to_block_hash is not None:
-                del left_filter["toBlockHash"]
-            if from_block_parent_hash is not None:
-                del right_filter["fromBlockParentHash"]
+            middle_block_hash = self.get_block(mid_block)["hash"].to_0x_hex()
+            left_filter["toBlockHash"] = middle_block_hash
+            right_filter["fromBlockParentHash"] = middle_block_hash
             return self.get_logs(left_filter, **kwargs) + self.get_logs(right_filter, **kwargs)
 
     def get_logs_inner(self, filter_params: FilterParams, no_retry: bool = False):
