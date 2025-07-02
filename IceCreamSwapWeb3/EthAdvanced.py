@@ -242,7 +242,7 @@ class EthAdvanced(Eth):
 
         # getting logs for a single block, which is not at the chain head. No drama
         if num_blocks == 1:
-            block_hash = self._get_block(from_block)["hash"].to_0x_hex()
+            block_hash = self.get_block(from_block)["hash"].to_0x_hex()
             single_hash_filter = {**filter_params, "blockHash": block_hash}
             del single_hash_filter["fromBlock"]
             del single_hash_filter["toBlock"]
