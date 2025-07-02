@@ -1,3 +1,4 @@
+import os
 from importlib.resources import files
 from time import sleep
 
@@ -65,11 +66,23 @@ class Web3Advanced(Web3):
         self.latest_seen_block = self.eth.get_block_number(ignore_latest_seen_block=True)
 
         self.filter_block_range = self._find_max_filter_range()
+        if self.filter_block_range == 0 and os.getenv("RPC_REQUIRE_LOGS", "false").lower() == "true":
+            raise Exception("Can not get logs from RPC")
         self.rpc_batch_max_size = self._find_max_batch_size()
+        if self.rpc_batch_max_size == 0 and os.getenv("RPC_REQUIRE_BATCHING", "false").lower() == "true":
+            raise Exception("RPC does not support batch requests")
         self.revert_reason_available: bool = self._check_revert_reason_available()
+        if not self.revert_reason_available and os.getenv("RPC_REQUIRE_REVERT_REASON", "false").lower() == "true":
+            raise Exception("RPC does not correctly return revert reasons")
         self.is_archive = self._check_is_archive()
+        if not self.is_archive and os.getenv("RPC_REQUIRE_ARCHIVE", "false").lower() == "true":
+            raise Exception("RPC does not support archive requests")
         self.overwrites_available: bool = self._check_overwrites_available()
+        if not self.overwrites_available and os.getenv("RPC_REQUIRE_OVERWRITES", "false").lower() == "true":
+            raise Exception("RPC does not support state overwrites")
         self.subsquid_available: bool = self._check_subsquid_available()
+        if not self.subsquid_available and os.getenv("RPC_REQUIRE_SUBSQUID", "false").lower() == "true":
+            raise Exception("Chain not supported by SubSquid")
 
         self.middleware_onion.inject(BatchRetryMiddleware, layer=0, name="batch_retry")  # split and retry batch requests
 
