@@ -41,7 +41,7 @@ class BatchRetryMiddleware(Web3Middleware):
                     exponential_retry(f"[batch]{method}")(request_wrapper)(
                         method,
                         params,
-                        no_retry=not self._w3.should_retry
+                        no_retry=not self._w3.should_retry or method == "eth_getLogs"
                     )
                     for method, params in requests_info
                 ]
