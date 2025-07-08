@@ -1,5 +1,7 @@
 from typing import cast
 
+import os
+import json
 import requests
 from .FastChecksumAddress import to_checksum_address
 from hexbytes import HexBytes
@@ -33,10 +35,13 @@ def get_text(url: str) -> str:
     res.raise_for_status()
     return res.text
 
+# getting up to the next 100k blocks in anticipation of future queries.
+future_logs_cache = {}
 def get_filter(
         chain_id: int,
         filter_params: FilterParams,
         partial_allowed=False,
+        disable_subsquid_look_ahead_cache: bool = os.getenv("DISABLE_SUBSQUID_LOOKAHEAD_CACHE", "false").lower() == "true",
         p_bar = None
 ) -> tuple[int, list[LogReceipt]]:
     endpoints = get_endpoints()
@@ -62,7 +67,7 @@ def get_filter(
             raise ValueError(f"Subsquid has only indexed till block {latest_block}")
 
     query = {
-        "toBlock": to_block,
+        "toBlock": to_block if disable_subsquid_look_ahead_cache else to_block + 100_000,
         "logs": [{}],
         "fields": {
             "log": {
@@ -95,14 +100,38 @@ def get_filter(
 
     logs: list[LogReceipt] = []
     while from_block <= to_block:
-        worker_url = get_text(f'{gateway_url}/{from_block}/worker')
+        cache_key_query = query.copy()
+        cache_key_query.pop("fromBlock", None)
+        cache_key_query.pop("toBlock")
+        cache_key = json.dumps(cache_key_query)
 
-        query['fromBlock'] = from_block
-        res = requests.post(worker_url, json=query)
-        res.raise_for_status()
-        blocks = res.json()
+        if cache_key in future_logs_cache and future_logs_cache[cache_key]["fromBlock"] == from_block:
+            blocks = future_logs_cache.pop(cache_key)["blocks"]
+        else:
+            worker_url = get_text(f'{gateway_url}/{from_block}/worker')
 
-        last_processed_block = blocks[-1]['header']['number']
+            query['fromBlock'] = from_block
+            res = requests.post(worker_url, json=query)
+            res.raise_for_status()
+            blocks = res.json()
+
+        # got more results than needed right now. Caching additional results
+        if blocks[-1]['header']['number'] > to_block:
+            if not disable_subsquid_look_ahead_cache:
+                if len(future_logs_cache) > 10:
+                    # limiting future_logs_cache to 10 items
+                    future_logs_cache.pop(next(iter(future_logs_cache)))
+                future_blocks = [block for block in blocks if block['header']['number'] > to_block]
+                future_logs_cache[cache_key] = {
+                    "fromBlock": to_block + 1,
+                    "blocks": future_blocks,
+                }
+            blocks = [block for block in blocks if block['header']['number'] <= to_block]
+            last_processed_block = to_block
+        else:
+            last_processed_block = blocks[-1]['header']['number']
+
+        assert last_processed_block <= to_block
         if p_bar is not None:
             p_bar.update(last_processed_block-from_block+1)
         from_block = last_processed_block + 1
