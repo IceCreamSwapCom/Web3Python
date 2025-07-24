@@ -110,6 +110,10 @@ def get_filter(
         else:
             worker_url = get_text(f'{gateway_url}/{from_block}/worker')
 
+            if os.getenv("SUBSQUID_USE_IP_PROXY", "true").lower() == "true":
+                assert worker_url.startswith("https://")
+                worker_url = "https://rpc-internal.icecreamswap.com/proxy/" + worker_url[8:]
+
             query['fromBlock'] = from_block
             res = requests.post(worker_url, json=query)
             res.raise_for_status()
