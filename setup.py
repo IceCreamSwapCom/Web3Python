@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.3.5'
+VERSION = '0.3.6'
 DESCRIPTION = 'IceCreamSwap Web3.py wrapper'
 LONG_DESCRIPTION = 'IceCreamSwap Web3.py wrapper with automatic retries, multicall and other advanced functionality'
 
