@@ -9,7 +9,7 @@ from web3.eth import Eth
 from web3.exceptions import ContractLogicError
 from web3.types import FilterParams, LogReceipt, StateOverride, BlockIdentifier, TxParams, BlockData, _Hash32
 
-from IceCreamSwapWeb3 import Web3Advanced
+from IceCreamSwapWeb3 import Web3Advanced, to_checksum_address
 from IceCreamSwapWeb3.Subsquid import get_filter
 
 
@@ -152,6 +152,26 @@ class EthAdvanced(Eth):
             self,
             _filter_params: FilterParamsExtended,
             show_progress_bar: bool = False,
+            no_retry: bool = False,
+            use_subsquid: bool = os.getenv("NO_SUBSQUID_LOGS") is None,
+            rechecksum_logs: bool = os.getenv("RECHECKSUM_ADDRESSES") is not None,
+    ) -> list[LogReceipt]:
+        logs = self._get_logs(
+            _filter_params=_filter_params,
+            show_progress_bar=show_progress_bar,
+            p_bar=None,
+            no_retry=no_retry,
+            use_subsquid=use_subsquid,
+        )
+        if rechecksum_logs:
+            for log in logs:
+                log["address"] = to_checksum_address(log["address"])
+        return logs
+
+    def _get_logs(
+            self,
+            _filter_params: FilterParamsExtended,
+            show_progress_bar: bool = False,
             p_bar=None,
             no_retry: bool = False,
             use_subsquid: bool = os.getenv("NO_SUBSQUID_LOGS") is None
@@ -163,7 +183,7 @@ class EthAdvanced(Eth):
         # getting logs for a single block defined by its block hash. No drama
         if "blockHash" in _filter_params:
             assert "fromBlock" not in _filter_params and "toBlock" not in _filter_params
-            return self.get_logs_inner(_filter_params, no_retry=no_retry)
+            return self._get_logs_inner(_filter_params, no_retry=no_retry)
 
         filter_params: FilterParamsSanitized = {**_filter_params}
 
@@ -238,7 +258,7 @@ class EthAdvanced(Eth):
                 partial_filter = {**filter_params, "fromBlock": next_block}
                 if from_block_parent_hash is not None and next_block != from_block:
                     del partial_filter["fromBlockParentHash"]
-                return results + self.get_logs(partial_filter, **kwargs)
+                return results + self._get_logs(partial_filter, **kwargs)
 
         # getting logs for a single block, which is not at the chain head. No drama
         if num_blocks == 1:
@@ -267,7 +287,7 @@ class EthAdvanced(Eth):
                 partial_filter["toBlockHash"] = to_block_hash
                 last_block_hash = to_block_hash
 
-                results += self.get_logs(partial_filter, **kwargs)
+                results += self._get_logs(partial_filter, **kwargs)
             return results
 
         # get logs and split on exception
@@ -311,7 +331,7 @@ class EthAdvanced(Eth):
             middle_block_hash = self.get_block(mid_block)["hash"].to_0x_hex()
             left_filter["toBlockHash"] = middle_block_hash
             right_filter["fromBlockParentHash"] = middle_block_hash
-            return self.get_logs(left_filter, **kwargs) + self.get_logs(right_filter, **kwargs)
+            return self._get_logs(left_filter, **kwargs) + self._get_logs(right_filter, **kwargs)
 
     def get_logs_inner(self, filter_params: FilterParams, no_retry: bool = False):
         filter_params = {**filter_params}
