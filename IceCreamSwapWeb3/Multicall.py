@@ -10,7 +10,6 @@ from web3.contract.contract import ContractFunction, ContractConstructor
 from web3.exceptions import ContractLogicError
 from web3.types import StateOverride
 
-from IceCreamSwapWeb3.EthAdvanced import exponential_retry
 from .AddressCalculator import calculate_create_address
 from .FastChecksumAddress import to_checksum_address
 
@@ -130,7 +129,7 @@ class MultiCall:
             state_overwrites: list[StateOverride | None],
             global_state_override: StateOverride | None = None,
             block_identifier: Optional[BlockIdentifier] = None
-    ) -> tuple[list[Exception | tuple[any, ...]], list[int]]:
+    ) -> tuple[list[Exception | tuple], list[int]]:
         assert len(calls_with_calldata) == len(state_overwrites)
         if len(calls_with_calldata) == 0:
             return [], []
@@ -187,7 +186,7 @@ class MultiCall:
                         block_identifier=block_identifier
                     )
                 except Exception as e:
-                    print(f"Single multicall to 0x{calls_with_calldata[0][0].address.hex()} and func {calls_with_calldata[0][0].signature} got Error: {repr(e)}")
+                    print(f"Single multicall to {calls_with_calldata[0][0].address} and func {calls_with_calldata[0][0].signature} got Error: {repr(e)}")
                     raw_returns = [e]
                     gas_usages = [None]
             else:
@@ -374,7 +373,7 @@ class MultiCall:
     def _decode_muilticall(
             multicall_result: bytes | list[tuple[bool, int, bytes]]
     ) -> tuple[list[str | Exception], list[int]]:
-        raw_returns: list[str or Exception] = []
+        raw_returns: list[str | Exception] = []
         gas_usages: list[int] = []
 
         if isinstance(multicall_result, list) or isinstance(multicall_result, tuple):
@@ -424,7 +423,7 @@ class MultiCall:
             try:
                 return eth_abi.decode(['string'], revert_bytes)
             except Exception:
-                return revert_bytes
+                return "0x" + revert_bytes.hex()
 
     def _call_multicall(
             self,
