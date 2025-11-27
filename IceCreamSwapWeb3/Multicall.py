@@ -10,8 +10,8 @@ from web3.contract.contract import ContractFunction, ContractConstructor
 from web3.exceptions import ContractLogicError
 from web3.types import StateOverride
 
-from .AddressCalculator import calculate_create_address
-from .FastChecksumAddress import to_checksum_address
+from IceCreamSwapWeb3.AddressCalculator import calculate_create_address
+from IceCreamSwapWeb3.FastChecksumAddress import to_checksum_address
 
 # load multicall abi
 with files("IceCreamSwapWeb3").joinpath("./abi/Multicall.abi").open('r') as f:

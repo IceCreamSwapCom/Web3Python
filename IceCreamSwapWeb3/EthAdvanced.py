@@ -9,8 +9,9 @@ from web3.eth import Eth
 from web3.exceptions import ContractLogicError
 from web3.types import FilterParams, LogReceipt, StateOverride, BlockIdentifier, TxParams, BlockData, _Hash32
 
-from IceCreamSwapWeb3 import Web3Advanced, to_checksum_address
+from IceCreamSwapWeb3 import Web3Advanced
 from IceCreamSwapWeb3.Subsquid import get_filter
+from IceCreamSwapWeb3.FastChecksumAddress import to_checksum_address
 
 
 class ForkedBlock(Exception):
