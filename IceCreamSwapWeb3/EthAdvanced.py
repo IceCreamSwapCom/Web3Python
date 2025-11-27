@@ -299,7 +299,7 @@ class EthAdvanced(Eth):
                 filter_params_cleaned.pop("toBlockHash", None)
                 if from_block_parent_hash is not None:
                     batch.add(self._get_block(from_block))
-                batch.add(self.get_logs_inner(filter_params_cleaned))
+                batch.add(self._get_logs(filter_params_cleaned))
                 batch.add(self._get_block(to_block))
 
                 events: list[LogReceipt]
