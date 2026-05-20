@@ -39,6 +39,7 @@ class MultiCall:
         42161: "0x1E0b5202F8D4a247d12528ac865ab73C61Db35Af",
         71402: "0xf8ac4BEB2F75d2cFFb588c63251347fdD629B92c",
         88: "0xf8ac4BEB2F75d2cFFb588c63251347fdD629B92c",
+        1: "0xdbF79245EbCa8c83e729d39D8865a8B4cA4a4248",
     }
 
     @classmethod
